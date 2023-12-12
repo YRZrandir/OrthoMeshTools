@@ -127,18 +127,35 @@ namespace
     }
 }
 
-void SegClean(std::string input_mesh, std::string input_labels, std::string output_labels, int size_threshold)
+bool SegClean(std::string input_mesh, std::string input_labels, std::string output_labels, int size_threshold)
 {
     // Config cfg = LoadConfig(argc, argv);
     Polyhedron mesh;
-
-    std::cout << "Read mesh...";
-    CGAL::IO::read_polygon_mesh(input_mesh, mesh);
-    std::cout << mesh.size_of_vertices() << ", " << mesh.size_of_facets() << std::endl;
-
-    std::cout << "Read labels...";
-    mesh.LoadLabels(input_labels);
-    std::cout << "finish" << std::endl;
+    if(CGAL::IO::read_polygon_mesh(input_mesh, mesh))
+    {
+        printf_s("Load mesh: V = %zd, F = %zd\n", mesh.size_of_vertices(), mesh.size_of_facets());
+    }
+    else
+    {
+        printf_s("Error: failed to read mesh: %s\n", input_mesh.c_str());
+        return false;
+    }
+    if(!mesh.is_valid(false))
+    {
+        std::cout << "Error: input mesh not valid:" << std::endl;
+        mesh.is_valid(true);
+        return false;
+    }
+    if(!mesh.is_pure_triangle())
+    {
+        std::cout << "Error: input mesh has non triangle face." << std::endl;
+        return false;
+    }
+    if(!mesh.LoadLabels(input_labels))
+    {
+        printf_s("Error: failed to load labels from: %s\n", input_labels.c_str());
+        return false;
+    }
 
     std::cout << "Find connected components...";
     std::vector<std::pair<int, std::vector<hVertex>>> connected_components;
@@ -149,7 +166,15 @@ void SegClean(std::string input_mesh, std::string input_labels, std::string outp
             connected_components.emplace_back(hv->_label, ConnectedComponents(hv, mesh));
         }
     }
-    std::cout << connected_components.size() << std::endl;
+    if(connected_components.empty())
+    {
+        printf_s("Error: Failed to find connected components.\n");
+        return false;
+    }
+    else
+    {
+        printf_s("Found %zd connected components by label\n", connected_components.size());
+    }
 
     std::unordered_map<int, size_t> max_label_component_sizes;
     for (const auto &[label, vertices] : connected_components)
@@ -166,16 +191,17 @@ void SegClean(std::string input_mesh, std::string input_labels, std::string outp
         size = std::min(size, (size_t)size_threshold);
     }
 
-    std::cout << "Clean small components...";
+    int cnt = 0;
     for (const auto &[label, vertices] : connected_components)
     {
         if (vertices.size() < max_label_component_sizes[label])
         {
+            cnt++;
             CleanSmallComponents(vertices, mesh);
         }
     }
-    std::cout << "finish" << std::endl;
-    mesh.WriteLabels(output_labels, input_labels);
+    printf_s("Cleaned %d small components.\n", cnt);
+    return mesh.WriteLabels(output_labels, input_labels);
 }
 
 #ifndef FOUND_PYBIND11

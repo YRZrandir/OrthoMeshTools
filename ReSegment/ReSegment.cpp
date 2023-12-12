@@ -273,7 +273,6 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
             if (!IsConnectedComponent(this_intersect_faces.begin(), this_intersect_faces.end(), mesh))
             {
                 auto path = FindPath(hf0, hf1, mesh);
-                // std::cout << "err " << path.size() << std::endl;
                 for (auto hf : path)
                 {
                     all_intersect_faces.insert(hf);
@@ -361,8 +360,8 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
     ReSegmentOneLabel(mesh, aabb_tree, points, output_labels, label, intersection_width, cutface_orit_smooth);
 }
 
-void ReSegmentLabels(
-    std::string input_oralscan,
+bool ReSegmentLabels(
+    std::string input_mesh,
     const std::vector<std::vector<std::vector<double>>> &splitlines,
     const std::vector<int> &splitline_labels,
     std::string output_json,
@@ -371,11 +370,34 @@ void ReSegmentLabels(
     bool upper)
 {
     Polyhedron mesh;
-    CGAL::IO::read_polygon_mesh(input_oralscan, mesh);
+    if(CGAL::IO::read_polygon_mesh(input_mesh, mesh, CGAL::parameters::verbose(true)))
+    {
+        printf_s("Load mesh: V = %zd, F = %zd\n", mesh.size_of_vertices(), mesh.size_of_facets());
+    }
+    else
+    {
+        std::cout << "Error: failed to read mesh: " << input_mesh << std::endl;
+        return false;
+    }
+    if(!mesh.is_valid(false))
+    {
+        std::cout << "Error: input mesh not valid:" << std::endl;
+        mesh.is_valid(true);
+        return false;
+    }
+    if(!mesh.is_pure_triangle())
+    {
+        std::cout << "Error: input mesh has non triangle face." << std::endl;
+        return false;
+    }
     CGAL::set_halfedgeds_items_id(mesh);
 
     AABBTree aabb_tree(mesh.facets_begin(), mesh.facets_end(), mesh);
-
+    if(aabb_tree.empty())
+    {
+        std::cout << "Error: failed to create AABB tree." << std::endl;
+        return false;
+    }
     std::vector<int> output_labels(mesh.size_of_vertices(), 0);
 
     std::vector<int> indices_to_process;
@@ -396,14 +418,19 @@ void ReSegmentLabels(
     nlohmann::json json;
     json["labels"] = output_labels;
     std::ofstream ofs(output_json);
+    if(ofs.fail())
+    {
+        return false;
+    }
     ofs << json;
+    return true;
 }
 
 
 #ifndef FOUND_PYBIND11
 int main(int argc, char *argv[])
 {
-    std::cout << "Not implemented. Use python interface." << std::endl;
+    std::cout << "Not implemented. Please use python interface." << std::endl;
     return 0;
     std::cout << std::format("CGAL: {}", CGAL_STR(CGAL_VERSION)) << std::endl;
     std::filesystem::current_path("../../test/ReSegment/");

@@ -123,6 +123,33 @@ namespace
         return true;
     }
 
+    bool WriteHalfEdges(const std::vector<std::vector<hHalfedge>>& edges, const std::string& path)
+    {
+        std::ofstream ofs(path);
+        if (ofs.fail())
+        {
+            return false;
+        }
+        int idx = 1;
+        for(const std::vector<hHalfedge>& arr : edges)
+        {
+            for (size_t i = 0; i < arr.size(); i++)
+            {
+                auto p0= arr[i]->vertex()->point();
+                auto p1 = arr[(i + 1) % arr.size()]->vertex()->point();
+                ofs << "v " << p0.x() << " " << p0.y() << " " << p0.z() << "\n";
+                ofs << "v " << p1.x() << " " << p1.y() << " " << p1.z() << "\n";
+                ofs << "l " << idx++ << " " << idx++ << "\n";
+            }
+        }
+        ofs.close();
+        if (ofs.fail())
+        {
+            return false;
+        }
+        return true;
+    }
+
     bool WritePoints(const std::vector<Point_3> &points, const std::string &path)
     {
         std::ofstream ofs(path);
@@ -146,14 +173,51 @@ namespace
         return true;
     }
 
+    bool WritePoints(const std::vector<std::vector<Point_3>>& points, const std::string& path)
+    {
+        std::ofstream ofs(path);
+        if (ofs.fail())
+        {
+            return false;
+        }
+        int idx = 1;
+        for(const std::vector<Point_3>& arr : points)
+        {
+            for (size_t i = 0; i < arr.size(); i++)
+            {
+                auto p0 = arr[i];
+                auto p1 = arr[(i + 1) % arr.size()];
+                ofs << "v " << p0.x() << " " << p0.y() << " " << p0.z() << "\n";
+                ofs << "v " << p1.x() << " " << p1.y() << " " << p1.z() << "\n";
+                ofs << "l " << idx++ << " " << idx++ << "\n";
+            }
+        }
+        ofs.close();
+        if (ofs.fail())
+        {
+            return false;
+        }
+        return true;
+    }
 }
 
 bool GumTrimLine(std::string input_file, std::string label_file, std::string output_file, int smooth)
 {
     Polyhedron mesh;
-    if (!CGAL::IO::read_polygon_mesh(input_file, mesh))
+    if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
     {
         printf_s("Failed to read mesh: %s\n", input_file.c_str());
+        return false;
+    }    
+    if(!mesh.is_valid(false))
+    {
+        std::cout << "Error: input mesh not valid:" << std::endl;
+        mesh.is_valid(true);
+        return false;
+    }
+    if(!mesh.is_pure_triangle())
+    {
+        std::cout << "Error: input mesh has non triangle face." << std::endl;
         return false;
     }
     CGAL::set_halfedgeds_items_id(mesh);
@@ -186,53 +250,61 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     CGAL::Face_filtered_graph<Polyhedron::Base> filtered_graph(mesh, components[0]);
     Polyhedron gum_mesh;
     CGAL::copy_face_graph(filtered_graph, gum_mesh);
-    gum_mesh.WriteOBJ("outgum.obj");
 
     std::vector<hHalfedge> border_halfedges;
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(gum_mesh, std::back_inserter(border_halfedges));
     if (border_halfedges.empty())
     {
-        printf_s("Cannot find trim line\n");
+        printf_s("Error: Cannot find trim line\n");
         return false;
     }
-    printf_s("Found %zd possible trim line\n", border_halfedges.size());
-
     std::vector<std::vector<hHalfedge>> border_cycles;
     for (hHalfedge hh : border_halfedges)
     {
         border_cycles.emplace_back(GetBorderCycle(hh, gum_mesh));
     }
 
-    std::vector<hHalfedge> &trimline = *std::max_element(border_cycles.begin(), border_cycles.end(), [](auto &lh, auto &rh)
-                                                         { return lh.size() < rh.size(); });
-    WriteHalfEdges(trimline, "outtrimline.obj");
-
-    printf_s("Select trim line length = %zd", trimline.size());
+    printf_s("Found %zd possible trim line. ", border_cycles.size());
+    border_cycles.erase(std::remove_if(border_cycles.begin(), border_cycles.end(), [](std::vector<hHalfedge>& edges){ return edges.size() <= 10; }), border_cycles.end());
+    printf_s("Use %zd of them after removing small ones.\n", border_cycles.size());
+    if(border_cycles.empty())
+    {
+        printf_s("Error: No valid trim line after filtering.\n");
+        return false;
+    }
 
     using AABBPrimitive = CGAL::AABB_face_graph_triangle_primitive<Polyhedron>;
     using AABBTraits = CGAL::AABB_traits<KernelEpick, AABBPrimitive>;
     using AABBTree = CGAL::AABB_tree<AABBTraits>;
     AABBTree aabb_tree(mesh.facets_begin(), mesh.facets_end(), mesh);
-    std::vector<Point_3> trim_points;
-    for (auto hh : trimline)
+    if(aabb_tree.empty())
     {
-        trim_points.push_back(hh->vertex()->point());
+        printf_s("Error: Failed to build AABB tree.\n");
+        return false;
     }
-
-    for (size_t iteration = 0; iteration < smooth; iteration++)
+    std::vector<std::vector<Point_3>> trim_points;
+    for(std::vector<hHalfedge>& trimline : border_cycles)
     {
-        std::vector<Point_3> new_points = trim_points;
-        for (size_t i = 0; i < new_points.size(); i++)
+        std::vector<Point_3> points;
+        for (auto hh : trimline)
         {
-            size_t prev = i == 0 ? new_points.size() - 1 : i - 1;
-            size_t next = i == new_points.size() - 1 ? 0 : i + 1;
-            new_points[i] = CGAL::midpoint(trim_points[prev], trim_points[next]);
-            new_points[i] = aabb_tree.closest_point(new_points[i]);
+            points.push_back(hh->vertex()->point());
         }
-        trim_points = new_points;
+        for (size_t iteration = 0; iteration < smooth; iteration++)
+        {
+            std::vector<Point_3> new_points = points;
+            for (size_t i = 0; i < new_points.size(); i++)
+            {
+                size_t prev = i == 0 ? new_points.size() - 1 : i - 1;
+                size_t next = i == new_points.size() - 1 ? 0 : i + 1;
+                new_points[i] = CGAL::midpoint(points[prev], points[next]);
+                new_points[i] = aabb_tree.closest_point(new_points[i]);
+            }
+            points = new_points;
+        }
+        trim_points.push_back(std::move(points));
     }
-    WritePoints(trim_points, output_file);
-    return true;
+    return WritePoints(trim_points, output_file);
 }
 
 #ifndef FOUND_PYBIND11

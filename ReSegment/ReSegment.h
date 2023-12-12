@@ -3,8 +3,8 @@
 #include <string>
 #include <vector>
 
-void ReSegmentLabels(
-    std::string input_oralscan,
+bool ReSegmentLabels(
+    std::string input_mesh,
     const std::vector<std::vector<std::vector<double>>> &splitlines, 
     const std::vector<int>& splitline_labels, 
     std::string output_json, 

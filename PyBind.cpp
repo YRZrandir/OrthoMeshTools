@@ -19,11 +19,11 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("output_mesh"));
 
     m.def("SegClean", &SegClean,
-          "Try to make sure each label is applied to single connected component. Areas that are smaller than size_threshold are processsed.",
-          py::arg("input_mesh"),
-          py::arg("input_labels"),
-          py::arg("output_labels"),
-          py::arg("size_threshold"));
+        "Try to make sure each label is applied to single connected component. Areas that are smaller than size_threshold are processsed.",
+        py::arg("input_mesh"),
+        py::arg("input_labels"),
+        py::arg("output_labels"),
+        py::arg("size_threshold"));
     
     m.def("FixMesh", &FixMesh, "Fix non-manifold vertices & edges",
         py::arg("path"),
@@ -38,7 +38,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("max_retry"));
 
     m.def("ReSegment", &ReSegmentLabels, "ReSegment the mesh using the provided splitlines.",
-        py::arg("input_oralscan"),
+        py::arg("input_mesh"),
         py::arg("splitlines"),
         py::arg("splitline_labels"),
         py::arg("output_json"),
