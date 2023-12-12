@@ -37,6 +37,20 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("refine"),
         py::arg("max_retry"));
 
+    m.def("FixMeshWithLabel", &FixMeshWithLabel, "Fix non-manifold vertices & edges and output manipulated vertex label file.",
+        py::arg("path"),
+        py::arg("output_path"),
+        py::arg("input_label"),
+        py::arg("output_label"),
+        py::arg("keep_largest_connected_component"),
+        py::arg("large_cc_threshold"),
+        py::arg("fix_self_intersection"),
+        py::arg("filter_small_holes"),
+        py::arg("max_hole_edges"),
+        py::arg("max_hole_diam"),
+        py::arg("refine"),
+        py::arg("max_retry"));  
+
     m.def("ReSegment", &ReSegmentLabels, "ReSegment the mesh using the provided splitlines.",
         py::arg("input_mesh"),
         py::arg("splitlines"),

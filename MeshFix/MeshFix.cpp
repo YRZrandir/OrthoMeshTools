@@ -35,7 +35,7 @@ namespace
 bool gVerbose = false;
 
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
-using Polyhedron = TPolyhedron<CGAL::Polyhedron_items_with_id_3, KernelEpick>;
+using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
 using hHalfedge = Polyhedron::Halfedge_handle;
 using hVertex = Polyhedron::Vertex_handle;
 using hFacet = Polyhedron::Facet_handle;
@@ -253,11 +253,58 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
     *nb_removed_face = faces.size() - result_faces.size();
     return result_faces;
 }
+
+void FixSelfIntersection( Polyhedron& m, int max_retry )
+{
+    std::vector<std::pair<hFacet, hFacet>> intersect_faces;
+    CGAL::Polygon_mesh_processing::self_intersections<CGAL::Parallel_if_available_tag>(m, std::back_inserter(intersect_faces));
+    std::unordered_set<hFacet> face_to_remove;
+    for(auto [f1, f2] : intersect_faces)
+    {
+        face_to_remove.insert(f1);  
+        face_to_remove.insert(f2);
+    }
+    for(auto& hf : face_to_remove)
+    {
+        m.erase_facet(hf->halfedge());
+    }
+
+    auto [vertices1, triangles1] = m.ToVerticesTriangles();
+    std::vector<int> labels;
+    for(auto hv : CGAL::vertices(m))
+    {
+        labels.push_back(hv->_label);
+    }
+    size_t nb_removed_faces = 0;
+    int cnt = 0;
+    do
+    {
+        triangles1 = RemoveNonManifold(vertices1, triangles1, &nb_removed_faces);
+        if(cnt++ > max_retry)
+            break;
+    } while(nb_removed_faces != 0);
+
+    std::vector<size_t> indices1;
+    for(const auto& f : triangles1)
+    {
+        indices1.push_back(f[0]);
+        indices1.push_back(f[1]);
+        indices1.push_back(f[2]);
+    }
+    
+    m = Polyhedron(vertices1, indices1);
+    auto hv = m.vertices_begin();
+    for(size_t i = 0; i < vertices1.size(); i++)
+    {
+        hv->_label = labels[i];
+        hv++;
+    }
+}
 }
 
 void FixMesh(
-    std::string path,
-    std::string output_path, 
+    std::string input_mesh,
+    std::string output_mesh, 
     bool keep_largest_connected_component,
     int large_cc_threshold,
     bool fix_self_intersection,
@@ -267,7 +314,7 @@ void FixMesh(
     bool refine,
     int max_retry)
 {
-    auto [vertices, faces] = LoadVFAssimp<KernelEpick, Triangle::size_type>(path);
+    auto [vertices, faces] = LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh);
     if(gVerbose)
     {
         std::cout << "Loading " << vertices.size() << " vertices, " << faces.size() << " faces. " << std::endl;
@@ -297,38 +344,7 @@ void FixMesh(
 
     if(fix_self_intersection)
     {
-        std::vector<std::pair<hFacet, hFacet>> intersect_faces;
-        CGAL::Polygon_mesh_processing::self_intersections<CGAL::Parallel_if_available_tag>(m, std::back_inserter(intersect_faces));
-        std::unordered_set<hFacet> face_to_remove;
-        for(auto [f1, f2] : intersect_faces)
-        {
-            face_to_remove.insert(f1);  
-            face_to_remove.insert(f2);
-        }
-        for(auto& hf : face_to_remove)
-        {
-            m.erase_facet(hf->halfedge());
-        }
-
-        auto [vertices1, triangles1] = m.ToVerticesTriangles();
-        nb_removed_faces = 0;
-        int cnt = 0;
-        do
-        {
-            triangles1 = RemoveNonManifold(vertices1, triangles1, &nb_removed_faces);
-            if(cnt++ > max_retry)
-                break;
-        } while(nb_removed_faces != 0);
-
-        std::vector<size_t> indices1;
-        for(const auto& f : triangles1)
-        {
-            indices1.push_back(f[0]);
-            indices1.push_back(f[1]);
-            indices1.push_back(f[2]);
-        }
-        
-        m = Polyhedron(vertices1, indices1);
+        FixSelfIntersection(m, max_retry);
     }
 
     if(keep_largest_connected_component)
@@ -377,7 +393,88 @@ void FixMesh(
         }
     }
 
-    m.WriteAssimp(output_path);
+    m.WriteAssimp(output_mesh);
+
+    if(gVerbose)
+    {
+        std::cout << "Output " << m.size_of_vertices() << " vertices," << m.size_of_facets() << " faces" << std::endl;
+    }
+}
+
+void FixMeshWithLabel(
+    std::string input_mesh,
+    std::string output_mesh,
+    std::string input_label,
+    std::string output_label,
+    bool keep_largest_connected_component,
+    int large_cc_threshold,
+    bool fix_self_intersection,
+    bool filter_small_holes,
+    int max_hole_edges,
+    float max_hole_diam,
+    bool refine,
+    int max_retry
+)
+{
+    auto [vertices, faces] = LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh);
+    if(gVerbose)
+    {
+        std::cout << "Loading " << vertices.size() << " vertices, " << faces.size() << " faces. " << std::endl;
+    }
+    faces = FixRoundingOrder(vertices, faces);
+    std::cout << "After fix rounding F=" << faces.size() << std::endl;
+    size_t nb_removed_faces = 0;
+    int cnt = 0;
+    do
+    {
+        faces = RemoveNonManifold(vertices, faces, &nb_removed_faces);
+        if(cnt++ > max_retry)
+            break;
+    } while (nb_removed_faces != 0);
+
+    std::vector<size_t> indices;
+    for(const auto& f : faces )
+    {
+        indices.push_back(f[0]);
+        indices.push_back(f[1]);
+        indices.push_back(f[2]);
+    }
+
+    Polyhedron m( vertices, indices );
+    if(!m.LoadLabels(input_label))
+    {
+        std::cout << "Error: failed to load label file: " << input_label << std::endl;
+        return;
+    }
+    CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);    
+
+    if(fix_self_intersection)
+    {
+        FixSelfIntersection(m, max_retry);
+    }
+
+    if(keep_largest_connected_component)
+    {
+        size_t num = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, large_cc_threshold);
+        if(gVerbose)
+        {
+            std::cout << "Remove " << num << " small connected components." << std::endl;
+        }
+    }
+
+    std::vector<hHalfedge> border_edges;
+    CGAL::Polygon_mesh_processing::extract_boundary_cycles(m, std::back_inserter(border_edges));
+    for(hHalfedge hh : border_edges)
+    {
+        if(!filter_small_holes || (filter_small_holes && m.IsSmallHole(hh, max_hole_edges, max_hole_diam)) )
+        {
+            std::vector<hFacet> patch_faces;
+            CGAL::Polygon_mesh_processing::triangulate_hole(m, hh, std::back_inserter(patch_faces));
+        }
+    }
+
+    m.WriteAssimp(output_mesh);
+    m.WriteLabels(output_label, input_label);
 
     if(gVerbose)
     {
@@ -407,6 +504,8 @@ int main(int argc, char* argv[])
     }
     std::string path;
     std::string output_path;
+    std::string input_label;
+    std::string output_label;
     bool keep_largest_connected_component = false;
     int large_cc_threshold = 100;
     bool fix_self_intersection = false;
@@ -456,25 +555,52 @@ int main(int argc, char* argv[])
         {
             max_retry = std::atoi(argv[i+1]);
         }
+        else if (strcmp(argv[i], "-li") == 0)
+        {
+            input_label = std::string(argv[i + 1]);
+        }
+        else if (strcmp(argv[i], "-lo") == 0)
+        {
+            output_label = std::string(argv[i + 1]);
+        }
     }
     if(path.empty() || output_path.empty())
     {
         print_help_msg();
         return -1;
     }
-    FixMesh( 
-        path,
-        output_path,
-        keep_largest_connected_component,
-        large_cc_threshold,
-        fix_self_intersection, 
-        filter_small_holes, 
-        max_hole_edges, 
-        max_hole_diam, 
-        refine,
-        max_retry
-    );
-    
+    if(!input_label.empty() && !output_label.empty())
+    {
+        FixMeshWithLabel(
+            path,
+            output_path,
+            input_label,
+            output_label,
+            keep_largest_connected_component,
+            large_cc_threshold,
+            fix_self_intersection, 
+            filter_small_holes, 
+            max_hole_edges, 
+            max_hole_diam, 
+            refine,
+            max_retry
+        );
+    }
+    else
+    {
+        FixMesh( 
+            path,
+            output_path,
+            keep_largest_connected_component,
+            large_cc_threshold,
+            fix_self_intersection, 
+            filter_small_holes, 
+            max_hole_edges, 
+            max_hole_diam, 
+            refine,
+            max_retry
+        );
+    }
     return 0;
 }
 #endif
