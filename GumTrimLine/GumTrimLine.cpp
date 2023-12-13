@@ -8,6 +8,7 @@
 #include <CGAL/boost/graph/copy_face_graph.h>
 #include <CGAL/boost/graph/io.h>
 #include <CGAL/Polygon_mesh_processing/border.h>
+#include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
 #include "../Polyhedron.h"
 
 namespace
@@ -68,7 +69,7 @@ namespace
             front.pop_front();
             for (auto nei : CGAL::faces_around_face(f->halfedge(), mesh))
             {
-                if (!nei->_processed && nei->_label == hf->_label)
+                if (nei != nullptr && !nei->_processed && nei->_label == hf->_label)
                 {
                     front.push_back(nei);
                     faces.push_back(nei);
@@ -199,6 +200,22 @@ namespace
         }
         return true;
     }
+
+    void CloseHoles(Polyhedron& mesh)
+    {
+        std::vector<hHalfedge> border_halfedges;
+        CGAL::Polygon_mesh_processing::extract_boundary_cycles(mesh, std::back_inserter(border_halfedges));
+        for(auto hh : border_halfedges)
+        {
+            std::vector<hFacet> out_faces;
+            CGAL::Polygon_mesh_processing::triangulate_hole(mesh, hh, std::back_inserter(out_faces));
+        }       
+    }
+
+    std::vector<Point_3> Merge( const std::vector<Point_3>& point0, const std::vector<Point_3>& point1 )
+    {
+
+    }
 }
 
 bool GumTrimLine(std::string input_file, std::string label_file, std::string output_file, int smooth)
@@ -208,7 +225,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     {
         printf_s("Failed to read mesh: %s\n", input_file.c_str());
         return false;
-    }    
+    }
     if(!mesh.is_valid(false))
     {
         std::cout << "Error: input mesh not valid:" << std::endl;
@@ -220,12 +237,31 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         std::cout << "Error: input mesh has non triangle face." << std::endl;
         return false;
     }
+    CloseHoles(mesh);
     CGAL::set_halfedgeds_items_id(mesh);
     printf_s("Load mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());
     if (!mesh.LoadLabels(label_file))
     {
         printf_s("Failed to read labels: %s\n", label_file.c_str());
         return false;
+    }
+    else
+    {
+        printf_s("Loaded labels.\n");
+    }
+    for(auto hf : CGAL::faces(mesh))
+    {
+        int l0 = hf->halfedge()->vertex()->_label;
+        int l1 = hf->halfedge()->next()->vertex()->_label;
+        int l2 = hf->halfedge()->prev()->vertex()->_label;
+        if(l0 == 0 || l1 == 0 || l2 == 0)
+        {
+            hf->_label = 0;
+        }
+        else
+        {
+            hf->_label = std::max(l0, std::max(l1, l2));
+        }
     }
 
     using SubMesh = std::vector<hFacet>;
@@ -244,13 +280,18 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         printf_s("Cannot find gum part.\n");
         return false;
     }
+    printf_s("Found %zd gum part by label\n", components.size());
 
     std::sort(components.begin(), components.end(), [](auto &lh, auto &rh)
               { return lh.size() > rh.size(); });
     CGAL::Face_filtered_graph<Polyhedron::Base> filtered_graph(mesh, components[0]);
     Polyhedron gum_mesh;
     CGAL::copy_face_graph(filtered_graph, gum_mesh);
-
+    if(gum_mesh.is_empty() || !gum_mesh.is_valid())
+    {
+        printf_s("Error: Cannot find gum part\n");
+        return false;
+    }
     std::vector<hHalfedge> border_halfedges;
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(gum_mesh, std::back_inserter(border_halfedges));
     if (border_halfedges.empty())
@@ -310,10 +351,11 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
 #ifndef FOUND_PYBIND11
 int main(int argc, char *argv[])
 {
-    std::string input_file;
-    std::string label_file;
-    std::string output_file;
-    int smooth = 0;
+    std::filesystem::current_path(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine)");
+    std::string input_file = "7.obj";
+    std::string label_file = "7.json";
+    std::string output_file = "7gumline.obj";
+    int smooth = 20;
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "-i") == 0)
