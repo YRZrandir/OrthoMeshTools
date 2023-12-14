@@ -50,7 +50,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("max_hole_edges"),
         py::arg("max_hole_diam"),
         py::arg("refine"),
-        py::arg("max_retry"));  
+        py::arg("max_retry"));
 
     m.def("ReSegment", &ReSegmentLabels, "ReSegment the mesh using the provided splitlines.",
         py::arg("input_mesh"),

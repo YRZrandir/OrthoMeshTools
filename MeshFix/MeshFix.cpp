@@ -553,37 +553,45 @@ int main(int argc, char* argv[])
         print_help_msg();
         return -1;
     }
-    if(!input_label.empty() && !output_label.empty())
+    try
     {
-        FixMeshWithLabel(
-            path,
-            output_path,
-            input_label,
-            output_label,
-            keep_largest_connected_component,
-            large_cc_threshold,
-            fix_self_intersection, 
-            filter_small_holes, 
-            max_hole_edges, 
-            max_hole_diam, 
-            refine,
-            max_retry
-        );
+        if(!input_label.empty() && !output_label.empty())
+        {
+            FixMeshWithLabel(
+                path,
+                output_path,
+                input_label,
+                output_label,
+                keep_largest_connected_component,
+                large_cc_threshold,
+                fix_self_intersection, 
+                filter_small_holes, 
+                max_hole_edges, 
+                max_hole_diam, 
+                refine,
+                max_retry
+            );
+        }
+        else
+        {
+            FixMesh( 
+                path,
+                output_path,
+                keep_largest_connected_component,
+                large_cc_threshold,
+                fix_self_intersection, 
+                filter_small_holes, 
+                max_hole_edges, 
+                max_hole_diam, 
+                refine,
+                max_retry
+            );
+        }
     }
-    else
+    catch( const std::exception& e)
     {
-        FixMesh( 
-            path,
-            output_path,
-            keep_largest_connected_component,
-            large_cc_threshold,
-            fix_self_intersection, 
-            filter_small_holes, 
-            max_hole_edges, 
-            max_hole_diam, 
-            refine,
-            max_retry
-        );
+        std::cout << e.what() << std::endl;
+        return -1;
     }
     return 0;
 }

@@ -254,8 +254,10 @@ public:
         ofs.close();
     }
 
-    virtual void WriteAssimp( const std::string& path) const
+    virtual void WriteAssimp( const std::string& path)
     {
+        CGAL::set_halfedgeds_items_id(*this);
+
         Assimp::Exporter exporter;
         auto scene = std::make_unique<aiScene>();
 
@@ -295,7 +297,7 @@ public:
             m->mFaces[i].mIndices = new unsigned int[3];
             m->mFaces[i].mIndices[0] = static_cast<unsigned int>(hf->halfedge()->vertex()->id());
             m->mFaces[i].mIndices[1] = static_cast<unsigned int>(hf->halfedge()->next()->vertex()->id());
-            m->mFaces[i].mIndices[2] = static_cast<unsigned int>(hf->halfedge()->prev()->prev()->vertex()->id());
+            m->mFaces[i].mIndices[2] = static_cast<unsigned int>(hf->halfedge()->prev()->vertex()->id());
         }
 
         std::string postfix = path.substr(path.rfind('.') + 1);
@@ -494,7 +496,7 @@ public:
         }
     }
 
-    virtual void WriteAssimp( const std::string& path) const override
+    virtual void WriteAssimp( const std::string& path) override
     {
         static const std::array<aiColor4D, 10> COLORS = {
             aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
@@ -508,7 +510,7 @@ public:
             aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
             aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
         };
-        
+        CGAL::set_halfedgeds_items_id(*this);
         Assimp::Exporter exporter;
         auto scene = std::make_unique<aiScene>();
 
@@ -550,7 +552,7 @@ public:
             m->mFaces[i].mIndices = new unsigned int[3];
             m->mFaces[i].mIndices[0] = static_cast<unsigned int>(hf->halfedge()->vertex()->id());
             m->mFaces[i].mIndices[1] = static_cast<unsigned int>(hf->halfedge()->next()->vertex()->id());
-            m->mFaces[i].mIndices[2] = static_cast<unsigned int>(hf->halfedge()->prev()->prev()->vertex()->id());
+            m->mFaces[i].mIndices[2] = static_cast<unsigned int>(hf->halfedge()->prev()->vertex()->id());
         }
 
         std::string postfix = path.substr(path.rfind('.') + 1);
