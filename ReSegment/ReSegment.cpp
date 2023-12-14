@@ -372,7 +372,7 @@ bool ReSegmentLabels(
     Polyhedron mesh;
     if(CGAL::IO::read_polygon_mesh(input_mesh, mesh, CGAL::parameters::verbose(true)))
     {
-        printf_s("Load mesh: V = %zd, F = %zd\n", mesh.size_of_vertices(), mesh.size_of_facets());
+        printf("Load mesh: V = %zd, F = %zd\n", mesh.size_of_vertices(), mesh.size_of_facets());
     }
     else
     {

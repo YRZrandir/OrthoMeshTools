@@ -133,11 +133,11 @@ bool SegClean(std::string input_mesh, std::string input_labels, std::string outp
     Polyhedron mesh;
     if(CGAL::IO::read_polygon_mesh(input_mesh, mesh))
     {
-        printf_s("Load mesh: V = %zd, F = %zd\n", mesh.size_of_vertices(), mesh.size_of_facets());
+        printf("Load mesh: V = %zd, F = %zd\n", mesh.size_of_vertices(), mesh.size_of_facets());
     }
     else
     {
-        printf_s("Error: failed to read mesh: %s\n", input_mesh.c_str());
+        printf("Error: failed to read mesh: %s\n", input_mesh.c_str());
         return false;
     }
     if(!mesh.is_valid(false))
@@ -153,7 +153,7 @@ bool SegClean(std::string input_mesh, std::string input_labels, std::string outp
     }
     if(!mesh.LoadLabels(input_labels))
     {
-        printf_s("Error: failed to load labels from: %s\n", input_labels.c_str());
+        printf("Error: failed to load labels from: %s\n", input_labels.c_str());
         return false;
     }
 
@@ -168,12 +168,12 @@ bool SegClean(std::string input_mesh, std::string input_labels, std::string outp
     }
     if(connected_components.empty())
     {
-        printf_s("Error: Failed to find connected components.\n");
+        printf("Error: Failed to find connected components.\n");
         return false;
     }
     else
     {
-        printf_s("Found %zd connected components by label\n", connected_components.size());
+        printf("Found %zd connected components by label\n", connected_components.size());
     }
 
     std::unordered_map<int, size_t> max_label_component_sizes;
@@ -200,7 +200,7 @@ bool SegClean(std::string input_mesh, std::string input_labels, std::string outp
             CleanSmallComponents(vertices, mesh);
         }
     }
-    printf_s("Cleaned %d small components.\n", cnt);
+    printf("Cleaned %d small components.\n", cnt);
     return mesh.WriteLabels(output_labels, input_labels);
 }
 

@@ -324,14 +324,14 @@ bool FixMesh(
     std::vector<Triangle> faces;
     if(!LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces))
     {
-        printf_s("Error: Failed to read mesh: %s\n", input_mesh.c_str());
+        printf("Error: Failed to read mesh: %s\n", input_mesh.c_str());
         return false;
     }
     else
     {
         if(gVerbose)
         {
-            printf_s("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
+            printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
         }
     }
     faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(vertices, faces);
@@ -437,14 +437,14 @@ bool FixMeshWithLabel(
     std::vector<Triangle> faces;
     if(!LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces))
     {
-        printf_s("Error: Failed to read mesh: %s\n", input_mesh.c_str());
+        printf("Error: Failed to read mesh: %s\n", input_mesh.c_str());
         return false;
     }
     else
     {
         if(gVerbose)
         {
-            printf_s("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
+            printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
         }
     }
     faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(vertices, faces);

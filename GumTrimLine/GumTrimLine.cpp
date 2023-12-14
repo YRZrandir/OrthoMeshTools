@@ -323,7 +323,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     Polyhedron mesh;
     if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
     {
-        printf_s("Failed to read mesh: %s\n", input_file.c_str());
+        printf("Failed to read mesh: %s\n", input_file.c_str());
         return false;
     }
     if (!mesh.is_valid(false))
@@ -339,15 +339,15 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     }
     CloseHoles(mesh);
     CGAL::set_halfedgeds_items_id(mesh);
-    printf_s("Load mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());
+    printf("Load mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());
     if (!mesh.LoadLabels(label_file))
     {
-        printf_s("Failed to read labels: %s\n", label_file.c_str());
+        printf("Failed to read labels: %s\n", label_file.c_str());
         return false;
     }
     else
     {
-        printf_s("Loaded labels.\n");
+        printf("Loaded labels.\n");
     }
     // for(auto hf : CGAL::faces(mesh))
     // {
@@ -377,10 +377,10 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
 
     if (components.empty())
     {
-        printf_s("Cannot find gum part.\n");
+        printf("Cannot find gum part.\n");
         return false;
     }
-    printf_s("Found %zd gum part by label\n", components.size());
+    printf("Found %zd gum part by label\n", components.size());
 
     std::sort(components.begin(), components.end(), [](auto &lh, auto &rh)
               { return lh.size() > rh.size(); });
@@ -391,7 +391,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     AABBTree aabb_tree(mesh.facets_begin(), mesh.facets_end(), mesh);
     if (aabb_tree.empty())
     {
-        printf_s("Error: Failed to build AABB tree.\n");
+        printf("Error: Failed to build AABB tree.\n");
         return false;
     }
     std::vector<std::vector<Point_3>> trim_points;
@@ -404,22 +404,22 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         CGAL::Face_filtered_graph<Polyhedron> filtered_graph(mesh, comp);
         if (!filtered_graph.is_selection_valid())
         {
-            printf_s("Invalid selection!");
+            printf("Invalid selection!");
             return false;
         }
         Polyhedron gum_mesh;
         CGAL::copy_face_graph(filtered_graph, gum_mesh);
         if (gum_mesh.is_empty() || !gum_mesh.is_valid())
         {
-            printf_s("Error: Cannot find gum part\n");
+            printf("Error: Cannot find gum part\n");
             return false;
         }
-        printf_s("Mesh valid. F = %zd", gum_mesh.size_of_facets());
+        printf("Mesh valid. F = %zd", gum_mesh.size_of_facets());
         std::vector<hHalfedge> border_halfedges;
         CGAL::Polygon_mesh_processing::extract_boundary_cycles(gum_mesh, std::back_inserter(border_halfedges));
         if (border_halfedges.empty())
         {
-            printf_s("Error: Cannot find trim line\n");
+            printf("Error: Cannot find trim line\n");
             return false;
         }
         std::vector<std::vector<hHalfedge>> border_cycles;
@@ -428,14 +428,14 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
             border_cycles.emplace_back(GetBorderCycle(hh, gum_mesh));
         }
 
-        printf_s("Found %zd possible trim line. ", border_cycles.size());
+        printf("Found %zd possible trim line. ", border_cycles.size());
         border_cycles.erase(std::remove_if(border_cycles.begin(), border_cycles.end(), [](std::vector<hHalfedge> &edges)
                                            { return edges.size() <= 10; }),
                             border_cycles.end());
-        printf_s("Use %zd of them after removing small ones.\n", border_cycles.size());
+        printf("Use %zd of them after removing small ones.\n", border_cycles.size());
         if (border_cycles.empty())
         {
-            printf_s("Error: No valid trim line after filtering.\n");
+            printf("Error: No valid trim line after filtering.\n");
             return false;
         }
         for (std::vector<hHalfedge> &trimline : border_cycles)
@@ -513,7 +513,7 @@ int main(int argc, char *argv[])
     }
     if (!GumTrimLine(input_file, label_file, output_file, smooth))
     {
-        printf_s("GumTrimLine Failed.\n");
+        printf("GumTrimLine Failed.\n");
         return -1;
     }
     return 0;

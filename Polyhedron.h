@@ -551,7 +551,7 @@ bool LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3
     const aiScene* scene = importer.ReadFile(path, aiProcess_JoinIdenticalVertices | aiProcess_RemoveComponent);
     if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode || scene->mNumMeshes < 1)
     {
-        printf_s("Error: LoadVFAssimp: cannot read mesh.\n");
+        printf("Error: LoadVFAssimp: cannot read mesh.\n");
         return false;
     }
     const aiMesh* mesh = scene->mMeshes[0];
@@ -572,7 +572,7 @@ bool LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3
         const auto& f = mesh->mFaces[i];
         if(f.mIndices[0] >= mesh->mNumVertices || f.mIndices[1] >= mesh->mNumVertices || f.mIndices[2] >= mesh->mNumVertices)
         {
-            printf_s("Error: LoadVFAssimp: found bad index.\n");
+            printf("Error: LoadVFAssimp: found bad index.\n");
             return false;
         }
         faces.emplace_back(f.mIndices[0], f.mIndices[1], f.mIndices[2]);
