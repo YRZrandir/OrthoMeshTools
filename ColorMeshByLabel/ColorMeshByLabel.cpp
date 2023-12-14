@@ -22,11 +22,8 @@ bool ColorMeshByLabel( std::string input_file, std::string input_labels, std::st
 {
     std::vector<CGAL::Simple_cartesian<double>::Point_3> vertices;
     std::vector<TTriangle<size_t>> indices;
-    if(!LoadVFAssimp<CGAL::Simple_cartesian<double>, size_t>(input_file, vertices, indices))
-    {
-        std::cout << "Error: failed to load mesh." << std::endl;
-        return false;
-    }
+    LoadVFAssimp<CGAL::Simple_cartesian<double>, size_t>(input_file, vertices, indices);
+    
     auto labels = LoadLabels(input_labels);
     if(vertices.size() != labels.size())
     {

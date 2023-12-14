@@ -323,32 +323,22 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     Polyhedron mesh;
     if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
     {
-        printf("Failed to read mesh: %s\n", input_file.c_str());
-        return false;
+        throw IOError("Cannot read from file " + input_file);
     }
     if (!mesh.is_valid(false))
     {
-        std::cout << "Error: input mesh not valid:" << std::endl;
         mesh.is_valid(true);
-        return false;
+        throw MeshError("Input mesh not valid: " + input_file);
     }
     if (!mesh.is_pure_triangle())
     {
-        std::cout << "Error: input mesh has non triangle face." << std::endl;
-        return false;
+        throw MeshError("Input mesh has non triangle face: " + input_file);
     }
     CloseHoles(mesh);
     CGAL::set_halfedgeds_items_id(mesh);
     printf("Load mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());
-    if (!mesh.LoadLabels(label_file))
-    {
-        printf("Failed to read labels: %s\n", label_file.c_str());
-        return false;
-    }
-    else
-    {
-        printf("Loaded labels.\n");
-    }
+    mesh.LoadLabels(label_file);
+    printf("Loaded labels.\n");
     // for(auto hf : CGAL::faces(mesh))
     // {
     //     int l0 = hf->halfedge()->vertex()->_label;
@@ -377,8 +367,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
 
     if (components.empty())
     {
-        printf("Cannot find gum part.\n");
-        return false;
+        throw AlgError("Cannot find gum part");
     }
     printf("Found %zd gum part by label\n", components.size());
 
@@ -391,8 +380,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     AABBTree aabb_tree(mesh.facets_begin(), mesh.facets_end(), mesh);
     if (aabb_tree.empty())
     {
-        printf("Error: Failed to build AABB tree.\n");
-        return false;
+        throw AlgError("Failed to build AABB tree.");
     }
     std::vector<std::vector<Point_3>> trim_points;
     for (auto &comp : components)
@@ -404,23 +392,20 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         CGAL::Face_filtered_graph<Polyhedron> filtered_graph(mesh, comp);
         if (!filtered_graph.is_selection_valid())
         {
-            printf("Invalid selection!");
-            return false;
+            throw AlgError("Invalid part selection!");
         }
         Polyhedron gum_mesh;
         CGAL::copy_face_graph(filtered_graph, gum_mesh);
         if (gum_mesh.is_empty() || !gum_mesh.is_valid())
         {
-            printf("Error: Cannot find gum part\n");
-            return false;
+            throw AlgError("Cannot find gum part");
         }
         printf("Mesh valid. F = %zd", gum_mesh.size_of_facets());
         std::vector<hHalfedge> border_halfedges;
         CGAL::Polygon_mesh_processing::extract_boundary_cycles(gum_mesh, std::back_inserter(border_halfedges));
         if (border_halfedges.empty())
         {
-            printf("Error: Cannot find trim line\n");
-            return false;
+            throw AlgError("Cannot find trim line");
         }
         std::vector<std::vector<hHalfedge>> border_cycles;
         for (hHalfedge hh : border_halfedges)
@@ -435,8 +420,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         printf("Use %zd of them after removing small ones.\n", border_cycles.size());
         if (border_cycles.empty())
         {
-            printf("Error: No valid trim line after filtering.\n");
-            return false;
+            throw AlgError("No valid trim line after filtering.");
         }
         for (std::vector<hHalfedge> &trimline : border_cycles)
         {

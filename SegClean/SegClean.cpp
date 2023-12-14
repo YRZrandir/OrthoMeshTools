@@ -137,25 +137,19 @@ bool SegClean(std::string input_mesh, std::string input_labels, std::string outp
     }
     else
     {
-        printf("Error: failed to read mesh: %s\n", input_mesh.c_str());
-        return false;
+        throw IOError("Cannot read from file " + input_mesh);
     }
     if(!mesh.is_valid(false))
     {
-        std::cout << "Error: input mesh not valid:" << std::endl;
         mesh.is_valid(true);
-        return false;
+        throw MeshError("Input mesh not valid: " + input_mesh);
     }
     if(!mesh.is_pure_triangle())
     {
-        std::cout << "Error: input mesh has non triangle face." << std::endl;
-        return false;
+        throw MeshError("Input mesh has non triangle face: " + input_mesh);
     }
-    if(!mesh.LoadLabels(input_labels))
-    {
-        printf("Error: failed to load labels from: %s\n", input_labels.c_str());
-        return false;
-    }
+
+    mesh.LoadLabels(input_labels);
 
     std::cout << "Find connected components...";
     std::vector<std::pair<int, std::vector<hVertex>>> connected_components;
@@ -201,7 +195,8 @@ bool SegClean(std::string input_mesh, std::string input_labels, std::string outp
         }
     }
     printf("Cleaned %d small components.\n", cnt);
-    return mesh.WriteLabels(output_labels, input_labels);
+    mesh.WriteLabels(output_labels, input_labels);
+    return true;
 }
 
 #ifndef FOUND_PYBIND11

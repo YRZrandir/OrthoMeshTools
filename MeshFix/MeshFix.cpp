@@ -131,16 +131,16 @@ void FixSelfIntersection( Poly& m, int max_retry )
         if(cnt++ > max_retry)
             break;
     } while(nb_removed_faces != 0);
-
-    std::vector<typename Poly::Face::size_type> indices;
-    for(const auto& f : triangles)
+    
+    try
     {
-        indices.push_back(f[0]);
-        indices.push_back(f[1]);
-        indices.push_back(f[2]);
+        m.BuildFromVerticesFaces(vertices, triangles);
+    }
+    catch(const MeshError& e)
+    {
+        throw AlgError("Failed to fix self intersection: " + std::string(e.what()));
     }
     
-    m = Poly(vertices, indices);
     auto hv = m.vertices_begin();
     for(size_t i = 0; i < vertices.size(); i++)
     {
@@ -322,38 +322,29 @@ bool FixMesh(
 {
     std::vector<KernelEpick::Point_3> vertices;
     std::vector<Triangle> faces;
-    if(!LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces))
+    LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
+    if(gVerbose)
     {
-        printf("Error: Failed to read mesh: %s\n", input_mesh.c_str());
-        return false;
-    }
-    else
-    {
-        if(gVerbose)
-        {
-            printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
-        }
+        printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
     }
     faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(vertices, faces);
-    std::cout << "After fix rounding F=" << faces.size() << std::endl;
+    std::cout << "After fix rounding F = " << faces.size() << std::endl;
+
     size_t nb_removed_faces = 0;
     int cnt = 0;
     do
     {
         faces = RemoveNonManifold<KernelEpick, Triangle::size_type>(vertices, faces, &nb_removed_faces);
-        if(cnt++ > max_retry)
+        if(cnt++ >= max_retry)
             break;
     } while (nb_removed_faces != 0);
-
-    std::vector<size_t> indices;
-    for(const auto& f : faces )
+    if(cnt >= max_retry)
     {
-        indices.push_back(f[0]);
-        indices.push_back(f[1]);
-        indices.push_back(f[2]);
+        throw AlgError("Cannot remove non-manifold parts. Try increasing retry times.");
     }
 
-    Polyhedron m( vertices, indices );
+    Polyhedron m;
+    m.BuildFromVerticesFaces(vertices, faces);
     
     CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);
 
@@ -375,24 +366,7 @@ bool FixMesh(
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(m, std::back_inserter(border_edges));
     for(hHalfedge hh : border_edges)
     {
-        if(filter_small_holes)
-        {
-            if(m.IsSmallHole(hh, max_hole_edges, max_hole_diam))
-            {
-                if(refine)
-                {
-                    std::vector<hVertex> patch_vertices;
-                    std::vector<hFacet> patch_faces;
-                    CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(m, hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertices));
-                }
-                else
-                {
-                    std::vector<hFacet> patch_faces;
-                    CGAL::Polygon_mesh_processing::triangulate_hole(m, hh, std::back_inserter(patch_faces));
-                }
-            }
-        }
-        else
+        if(!filter_small_holes || (filter_small_holes && m.IsSmallHole(hh, max_hole_edges, max_hole_diam)))
         {
             if(refine)
             {
@@ -407,12 +381,10 @@ bool FixMesh(
             }
         }
     }
-
     m.WriteAssimp(output_mesh);
-
     if(gVerbose)
     {
-        std::cout << "Output " << m.size_of_vertices() << " vertices," << m.size_of_facets() << " faces" << std::endl;
+        printf("Output V = %zd, F = %zd.\n", m.size_of_vertices(), m.size_of_facets());
     }
     return true;
 }
@@ -432,20 +404,12 @@ bool FixMeshWithLabel(
     int max_retry
 )
 {
-
     std::vector<KernelEpick::Point_3> vertices;
     std::vector<Triangle> faces;
-    if(!LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces))
+    LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
+    if(gVerbose)
     {
-        printf("Error: Failed to read mesh: %s\n", input_mesh.c_str());
-        return false;
-    }
-    else
-    {
-        if(gVerbose)
-        {
-            printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
-        }
+        printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
     }
     faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(vertices, faces);
     std::cout << "After fix rounding F=" << faces.size() << std::endl;
@@ -454,24 +418,18 @@ bool FixMeshWithLabel(
     do
     {
         faces = RemoveNonManifold<KernelEpick, Triangle::size_type>(vertices, faces, &nb_removed_faces);
-        if(cnt++ > max_retry)
+        if(cnt++ >= max_retry)
             break;
     } while (nb_removed_faces != 0);
-
-    std::vector<size_t> indices;
-    for(const auto& f : faces )
+    if(cnt >= max_retry)
     {
-        indices.push_back(f[0]);
-        indices.push_back(f[1]);
-        indices.push_back(f[2]);
+        throw AlgError("Cannot remove non-manifold parts. Try increasing retry times.");
     }
+    Polyhedron m;
+    m.BuildFromVerticesFaces(vertices, faces);
 
-    Polyhedron m( vertices, indices );
-    if(!m.LoadLabels(input_label))
-    {
-        std::cout << "Error: failed to load label file: " << input_label << std::endl;
-        return false;
-    }
+    m.LoadLabels(input_label);
+
     CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);    
 
     if(fix_self_intersection)
@@ -492,20 +450,19 @@ bool FixMeshWithLabel(
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(m, std::back_inserter(border_edges));
     for(hHalfedge hh : border_edges)
     {
-        if(!filter_small_holes || (filter_small_holes && m.IsSmallHole(hh, max_hole_edges, max_hole_diam)) )
+        if(!filter_small_holes || (filter_small_holes && m.IsSmallHole(hh, max_hole_edges, max_hole_diam)))
         {
             std::vector<hFacet> patch_faces;
             CGAL::Polygon_mesh_processing::triangulate_hole(m, hh, std::back_inserter(patch_faces));
         }
     }
-
+    
     m.WriteAssimp(output_mesh);
-    m.WriteLabels(output_label, input_label);
-
     if(gVerbose)
     {
-        std::cout << "Output " << m.size_of_vertices() << " vertices," << m.size_of_facets() << " faces" << std::endl;
+        printf("Output V = %zd, F = %zd.\n", m.size_of_vertices(), m.size_of_facets());
     }
+    m.WriteLabels(output_label, input_label);
     return true;
 }
 

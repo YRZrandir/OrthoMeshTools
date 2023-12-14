@@ -6,6 +6,7 @@
 #include "MeshFix/MeshFix.h"
 #include "ReSegment/ReSegment.h"
 #include "SegClean/SegClean.h"
+#include "Polyhedron.h"
 
 namespace py = pybind11;
 
@@ -71,5 +72,8 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("output_file"),
         py::arg("smooth"));
 
+    py::register_local_exception<IOError>(m, "IOError");
+    py::register_local_exception<MeshError>(m, "MeshError");
+    py::register_local_exception<AlgError>(m, "AlgError");
 }
 #endif

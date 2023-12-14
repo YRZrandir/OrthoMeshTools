@@ -4,9 +4,10 @@
 
 #ifndef POLYHEDRON_H
 #define POLYHEDRON_H
+#include <exception>
 #include <memory>
-#include <utility>
 #include <type_traits>
+#include <utility>
 #include <assimp/Importer.hpp>
 #include <assimp/Exporter.hpp>
 #include <assimp/scene.h>
@@ -18,6 +19,27 @@
 #include <CGAL/Polyhedron_incremental_builder_3.h>
 #include <CGAL/Polyhedron_items_with_id_3.h>
 #include <nlohmann/json.hpp>
+
+class IOError : public std::runtime_error
+{
+public:
+    IOError( const std::string& what_arg ) : std::runtime_error(what_arg) {}
+    IOError( const char* what_arg ) : std::runtime_error(what_arg) {}
+};
+
+class MeshError : public std::runtime_error
+{
+public:
+    MeshError( const std::string& what_arg ) : std::runtime_error(what_arg) {}
+    MeshError( const char* what_arg ) : std::runtime_error(what_arg) {}
+};
+
+class AlgError : public std::runtime_error
+{
+public:
+    AlgError( const std::string& what_arg ) : std::runtime_error(what_arg) {}
+    AlgError( const char* what_arg ) : std::runtime_error(what_arg) {}
+};
 
 template <typename SizeType>
 struct TTriangle
@@ -139,14 +161,32 @@ public:
     using PairHash = TPairHash<typename Base::Vertex::size_type>;
     using PairPred = TPairPred<typename Base::Vertex::size_type>;
 
-    TPolyhedron(const std::vector<typename Kernel::Point_3> &vertices, const std::vector<size_t> &indices)
+    TPolyhedron() = default;
+
+    void BuildFromVerticesIndices(const std::vector<typename Kernel::Point_3> &vertices, const std::vector<typename Base::Vertex::size_type> &indices)
     {
+        this->clear();
         PolyhedronObjBuilder builder(vertices, indices);
         this->delegate(builder);
+        if(!builder.Success())
+        {
+            throw MeshError("Cannot build mesh by vertices and indices. Check for invalid elements & non-manifoldness.");
+        }
         CGAL::set_halfedgeds_items_id(*this);
     }
 
-    TPolyhedron() = default;
+    void BuildFromVerticesFaces(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<Triangle>& faces)
+    {
+        this->clear();
+        std::vector<typename Base::Vertex::size_type> indices;
+        for(const auto& f : faces)
+        {
+            indices.push_back(f[0]);
+            indices.push_back(f[1]);
+            indices.push_back(f[2]);
+        }
+        BuildFromVerticesIndices(vertices, indices);
+    }
 
     std::pair<std::vector<typename Kernel::Point_3>, std::vector<size_t>> ToVerticesIndices() const
     {
@@ -214,7 +254,7 @@ public:
         ofs.close();
     }
 
-    virtual bool WriteAssimp( const std::string& path) const
+    virtual void WriteAssimp( const std::string& path) const
     {
         Assimp::Exporter exporter;
         auto scene = std::make_unique<aiScene>();
@@ -269,7 +309,10 @@ public:
             postfix = "stlb";
         }
         //Assimp::ExportProperties prop;
-        return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
+        if(exporter.Export(scene.get(), postfix, path) != aiReturn_SUCCESS)
+        {
+            throw IOError("Failed to write assimp mesh to: " + path);
+        }
     }
 
     bool IsSmallHole(typename Base::Halfedge_handle hh, int max_num_hole_edges, float max_hole_diam)
@@ -340,8 +383,13 @@ public:
     static_assert(std::is_base_of_v<ItemsWithLabelFlag, Item>, "Item has to derive from ItemsWithLabelFlag!");
     using Base = TPolyhedron<Item, Kernel>;
 
-    TPolyhedronWithLabel(const std::vector<typename Kernel::Point_3> &vertices, const std::vector<size_t> &indices)
+    TPolyhedronWithLabel(const std::vector<typename Kernel::Point_3> &vertices, const std::vector<typename Base::Vertex::size_type> &indices)
         :Base(vertices, indices)
+    {
+    }
+
+    TPolyhedronWithLabel(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<typename Base::Triangle>& faces)
+        :Base(vertices, faces)
     {
     }
 
@@ -349,23 +397,26 @@ public:
         :Base()
     {}
 
-    bool LoadLabels( const std::string& path )
+    void LoadLabels( const std::string& path )
     {
         using namespace nlohmann;
         CGAL::set_halfedgeds_items_id(*this);
 
         std::ifstream label_ifs( path );
+        if(label_ifs.fail())
+        {
+            throw IOError("Cannot open file: " + path);
+        }
         json data = json::parse( label_ifs );
         if (data.find( "labels" ) == data.end())
         {
-            std::cout << "Invalid Json" << std::endl;
-            return false;
+            throw IOError("Cannot find key 'labels' in json file " + path);
         }
+        
         std::vector<int> labels = data["labels"].get<std::vector<int>>();
         if(labels.size() != this->size_of_vertices())
         {
-            std::cout << "number of labels != number of vertices" << std::endl;
-            return false;
+            throw IOError("Number of labels != number of vertices");
         }
         
         for(auto hv = this->vertices_begin(); hv != this->vertices_end(); hv++)
@@ -382,11 +433,9 @@ public:
             int l2 = hf->halfedge()->prev()->vertex()->_label;
             hf->_label = std::max(l0, std::max(l1, l2));
         }
-
-        return true;
     }
 
-    bool WriteLabels( const std::string& path ) const
+    void WriteLabels( const std::string& path ) const
     {
         using namespace nlohmann;
         std::vector<int> labels;
@@ -398,12 +447,19 @@ public:
         j["labels"] = labels;
 
         std::ofstream ofs(path);
+        if(ofs.fail())
+        {
+            throw IOError("Failed to write file: " + path);
+        }
         ofs << j;
         ofs.close();
-        return !ofs.fail();
+        if(ofs.fail())
+        {
+            throw IOError("Failed to write label file: " + path);
+        }
     }
 
-    bool WriteLabels( const std::string& path, const std::string& ori_path ) const
+    void WriteLabels( const std::string& path, const std::string& ori_path ) const
     {
         using namespace nlohmann;
         std::vector<int> labels;
@@ -413,17 +469,32 @@ public:
         }
 
         std::ifstream ori_ifs(ori_path);
+        if(ori_ifs.fail())
+        {
+            throw IOError("Cannot open file: " + ori_path);
+        }
         json ori_json = json::parse(ori_ifs);
         ori_ifs.close();
 
+        if(ori_json.find("labels") == ori_json.end())
+        {
+            throw IOError("Cannot find key 'labels' in json file " + ori_path);
+        }
         ori_json["labels"] = labels;
         std::ofstream ofs(path);
+        if(ofs.fail())
+        {
+            throw IOError("Failed to write label file: " + path);
+        }
         ofs << ori_json;
         ofs.close();
-        return !ofs.fail();
+        if(ofs.fail())
+        {
+            throw IOError("Failed to write label file: " + path);
+        }
     }
 
-    virtual bool WriteAssimp( const std::string& path) const override
+    virtual void WriteAssimp( const std::string& path) const override
     {
         static const std::array<aiColor4D, 10> COLORS = {
             aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
@@ -493,7 +564,10 @@ public:
             postfix = "stlb";
         }
         //Assimp::ExportProperties prop;
-        return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
+        if(exporter.Export(scene.get(), postfix, path) != aiReturn_SUCCESS)
+        {
+            throw IOError("Failed to write assimp mesh to: " + path);
+        }
     }
 };
 
@@ -516,11 +590,21 @@ public:
         : _vertices(vertices), _indices(indices) {}
     virtual void operator()(HDS &hds) override
     {
+        _success = true;
         CGAL::Polyhedron_incremental_builder_3<HDS> builder(hds, true);
         builder.begin_surface(_vertices.size(), _indices.size() / 3);
         for (size_t i = 0, size = _vertices.size(); i < size; i += 1)
         {
-            builder.add_vertex(_vertices[i]);
+            if(builder.add_vertex(_vertices[i]) == nullptr)
+            {
+                _success = false;
+                printf("Error: failed to add vertex: %zd\n", i);
+                break;
+            }
+        }
+        if(!_success)
+        {
+            return;
         }
         for (size_t f = 0, size = _indices.size() / 3; f < size; ++f)
         {
@@ -531,19 +615,28 @@ public:
             typename HDS::Halfedge_handle hh = builder.end_facet();
             if (hh == nullptr)
             {
-                std::cout << "Err: face " << f << ':' << _indices[f * 3 + 0] << ',' << _indices[f * 3 + 1] << ',' << _indices[f * 3 + 2] << std::endl;
+                _success = false;
+                printf("Error: failed to add face: %zd\n", f);
+                break;
             }
         }
         builder.end_surface();
+        if(builder.error())
+        {
+            _success = false;
+        }
     }
+
+    bool Success() const { return _success; };
 
 protected:
     const std::vector<typename Kernel::Point_3> &_vertices;
     const std::vector<size_t> &_indices;
+    bool _success = false;
 };
 
 template <typename Kernel, typename SizeType>
-bool LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<TTriangle<SizeType>>& faces )
+void LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<TTriangle<SizeType>>& faces )
 {
     Assimp::Importer importer;
     importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS,
@@ -551,8 +644,7 @@ bool LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3
     const aiScene* scene = importer.ReadFile(path, aiProcess_JoinIdenticalVertices | aiProcess_RemoveComponent);
     if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode || scene->mNumMeshes < 1)
     {
-        printf("Error: LoadVFAssimp: cannot read mesh.\n");
-        return false;
+        throw IOError("LoadVFAssimp: cannot read mesh: " + path);
     }
     const aiMesh* mesh = scene->mMeshes[0];
 
@@ -572,13 +664,10 @@ bool LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3
         const auto& f = mesh->mFaces[i];
         if(f.mIndices[0] >= mesh->mNumVertices || f.mIndices[1] >= mesh->mNumVertices || f.mIndices[2] >= mesh->mNumVertices)
         {
-            printf("Error: LoadVFAssimp: found bad index.\n");
-            return false;
+            throw IOError("LoadVFAssimp: found bad index.");
         }
         faces.emplace_back(f.mIndices[0], f.mIndices[1], f.mIndices[2]);
     }
-
-    return true;
 }
 
 template <typename Kernel, typename SizeType>
