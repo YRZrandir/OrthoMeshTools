@@ -1,6 +1,7 @@
 #include <deque>
 #include <iostream>
 #include <filesystem>
+#include "../Polyhedron.h"
 #include <CGAL/AABB_tree.h>
 #include <CGAL/AABB_face_graph_triangle_primitive.h>
 #include <CGAL/AABB_traits.h>
@@ -9,7 +10,6 @@
 #include <CGAL/boost/graph/io.h>
 #include <CGAL/Polygon_mesh_processing/border.h>
 #include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
-#include "../Polyhedron.h"
 
 namespace
 {
@@ -41,7 +41,7 @@ namespace
             front.pop_front();
             for (auto nei : CGAL::vertices_around_target(v, mesh))
             {
-                if (!nei->_processed && nei->_label == hv->_label)
+                if (!nei->_processed && nei->_label != 0)
                 {
                     front.push_back(nei);
                     vertices.push_back(nei);
@@ -69,7 +69,7 @@ namespace
             front.pop_front();
             for (auto nei : CGAL::faces_around_face(f->halfedge(), mesh))
             {
-                if (nei != nullptr && !nei->_processed && nei->_label == hf->_label)
+                if (nei != nullptr && !nei->_processed && nei->_label != 0)
                 {
                     front.push_back(nei);
                     faces.push_back(nei);
@@ -124,7 +124,7 @@ namespace
         return true;
     }
 
-    bool WriteHalfEdges(const std::vector<std::vector<hHalfedge>>& edges, const std::string& path)
+    bool WriteHalfEdges(const std::vector<std::vector<hHalfedge>> &edges, const std::string &path)
     {
         std::ofstream ofs(path);
         if (ofs.fail())
@@ -132,11 +132,11 @@ namespace
             return false;
         }
         int idx = 1;
-        for(const std::vector<hHalfedge>& arr : edges)
+        for (const std::vector<hHalfedge> &arr : edges)
         {
             for (size_t i = 0; i < arr.size(); i++)
             {
-                auto p0= arr[i]->vertex()->point();
+                auto p0 = arr[i]->vertex()->point();
                 auto p1 = arr[(i + 1) % arr.size()]->vertex()->point();
                 ofs << "v " << p0.x() << " " << p0.y() << " " << p0.z() << "\n";
                 ofs << "v " << p1.x() << " " << p1.y() << " " << p1.z() << "\n";
@@ -174,7 +174,7 @@ namespace
         return true;
     }
 
-    bool WritePoints(const std::vector<std::vector<Point_3>>& points, const std::string& path)
+    bool WritePoints(const std::vector<std::vector<Point_3>> &points, const std::string &path)
     {
         std::ofstream ofs(path);
         if (ofs.fail())
@@ -182,7 +182,7 @@ namespace
             return false;
         }
         int idx = 1;
-        for(const std::vector<Point_3>& arr : points)
+        for (const std::vector<Point_3> &arr : points)
         {
             for (size_t i = 0; i < arr.size(); i++)
             {
@@ -201,20 +201,120 @@ namespace
         return true;
     }
 
-    void CloseHoles(Polyhedron& mesh)
+    void CloseHoles(Polyhedron &mesh)
     {
         std::vector<hHalfedge> border_halfedges;
         CGAL::Polygon_mesh_processing::extract_boundary_cycles(mesh, std::back_inserter(border_halfedges));
-        for(auto hh : border_halfedges)
+        for (auto hh : border_halfedges)
         {
             std::vector<hFacet> out_faces;
             CGAL::Polygon_mesh_processing::triangulate_hole(mesh, hh, std::back_inserter(out_faces));
-        }       
+        }
     }
 
-    std::vector<Point_3> Merge( const std::vector<Point_3>& point0, const std::vector<Point_3>& point1 )
+    std::vector<Point_3> Merge(const std::vector<Point_3> &points0, const std::vector<Point_3> &points1)
     {
+        std::pair<size_t, size_t> closest_pair;
+        double min_dist = std::numeric_limits<double>::max();
+        for (size_t i = 0; i < points0.size(); i++)
+        {
+            for (size_t j = 0; j < points1.size(); j++)
+            {
+                double dist = CGAL::squared_distance(points0[i], points1[j]);
+                if (dist < min_dist)
+                {
+                    closest_pair = {i, j};
+                    min_dist = dist;
+                }
+            }
+        }
 
+        std::pair<size_t, size_t> end_pair;
+        double max_angle = 0.f;
+        bool flag = false;
+        for (size_t i = 0; i < points0.size() && !flag; i++)
+        {
+            size_t next_i = (closest_pair.first + i) % points0.size();
+            KernelEpick::Vector_3 vec_i = points0[(next_i + 1) % points0.size()] - points0[next_i];
+            for (size_t j = 0; j < points1.size(); j++)
+            {
+                size_t next_j = (closest_pair.second + j) % points1.size();
+                KernelEpick::Vector_3 vec_j = points0[(next_j + 1) % points1.size()] - points1[next_j];
+                double ang = CGAL::approximate_angle(vec_i, vec_j);
+                if (ang > max_angle)
+                {
+                    end_pair = {i, j};
+                    max_angle = ang;
+                }
+                else
+                {
+                    flag = true;
+                    break;
+                }
+            }
+        }
+
+        max_angle = 0.f;
+        flag = false;
+        std::pair<size_t, size_t> start_pair;
+        for (size_t i = 0; i < points0.size() && !flag; i++)
+        {
+            size_t prev_i = (closest_pair.first + points0.size() - i - 1) % points0.size();
+            KernelEpick::Vector_3 vec_i = points0[prev_i] - points0[(prev_i + 1) % points0.size()];
+            for (size_t j = 0; j < points1.size(); j++)
+            {
+                size_t prev_j = (closest_pair.second + points1.size() - j - 1) % points1.size();
+                KernelEpick::Vector_3 vec_j = points1[prev_j] - points1[(prev_j + 1) % points1.size()];
+                double ang = CGAL::approximate_angle(vec_i, vec_j);
+                if (ang > max_angle)
+                {
+                    start_pair = {i, j};
+                    max_angle = ang;
+                }
+                else
+                {
+                    flag = true;
+                    break;
+                }
+            }
+        }
+
+        std::ofstream ofs("./merge.obj");
+        for (size_t i = 0; i < points0.size(); i++)
+        {
+            CGAL::Color c(0, 0, 0);
+            if (i == closest_pair.first)
+            {
+                c = CGAL::Color(0, 255, 0);
+            }
+            if (i == start_pair.first)
+            {
+                c = CGAL::Color(255, 0, 0);
+            }
+            if (i == end_pair.first)
+            {
+                c = CGAL::Color(0, 0, 255);
+            }
+            ofs << "v " << points0[i].x() << ' ' << points0[i].y() << ' ' << points0[i].z() << ' ' << c.r() << ' ' << c.g() << ' ' << c.b() << '\n';
+        }
+        for (size_t i = 0; i < points1.size(); i++)
+        {
+            CGAL::Color c(0, 0, 0);
+            if (i == closest_pair.second)
+            {
+                c = CGAL::Color(0, 255, 0);
+            }
+            if (i == start_pair.second)
+            {
+                c = CGAL::Color(255, 0, 0);
+            }
+            if (i == end_pair.second)
+            {
+                c = CGAL::Color(0, 0, 255);
+            }
+            ofs << "v " << points1[i].x() << ' ' << points1[i].y() << ' ' << points1[i].z() << ' ' << c.r() << ' ' << c.g() << ' ' << c.b() << '\n';
+        }
+        return points0;
     }
 }
 
@@ -226,13 +326,13 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         printf_s("Failed to read mesh: %s\n", input_file.c_str());
         return false;
     }
-    if(!mesh.is_valid(false))
+    if (!mesh.is_valid(false))
     {
         std::cout << "Error: input mesh not valid:" << std::endl;
         mesh.is_valid(true);
         return false;
     }
-    if(!mesh.is_pure_triangle())
+    if (!mesh.is_pure_triangle())
     {
         std::cout << "Error: input mesh has non triangle face." << std::endl;
         return false;
@@ -249,27 +349,27 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     {
         printf_s("Loaded labels.\n");
     }
-    for(auto hf : CGAL::faces(mesh))
-    {
-        int l0 = hf->halfedge()->vertex()->_label;
-        int l1 = hf->halfedge()->next()->vertex()->_label;
-        int l2 = hf->halfedge()->prev()->vertex()->_label;
-        if(l0 == 0 || l1 == 0 || l2 == 0)
-        {
-            hf->_label = 0;
-        }
-        else
-        {
-            hf->_label = std::max(l0, std::max(l1, l2));
-        }
-    }
+    // for(auto hf : CGAL::faces(mesh))
+    // {
+    //     int l0 = hf->halfedge()->vertex()->_label;
+    //     int l1 = hf->halfedge()->next()->vertex()->_label;
+    //     int l2 = hf->halfedge()->prev()->vertex()->_label;
+    //     if(l0 == 0 || l1 == 0 || l2 == 0)
+    //     {
+    //         hf->_label = 0;
+    //     }
+    //     else
+    //     {
+    //         hf->_label = std::max(l0, std::max(l1, l2));
+    //     }
+    // }
 
     using SubMesh = std::vector<hFacet>;
     std::vector<SubMesh> components;
 
     for (auto hf : CGAL::faces(mesh))
     {
-        if (!hf->_processed && hf->_label == 0)
+        if (!hf->_processed && hf->_label != 0)
         {
             components.emplace_back(FacialConnectedComponents(hf, mesh));
         }
@@ -284,67 +384,88 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
 
     std::sort(components.begin(), components.end(), [](auto &lh, auto &rh)
               { return lh.size() > rh.size(); });
-    CGAL::Face_filtered_graph<Polyhedron::Base> filtered_graph(mesh, components[0]);
-    Polyhedron gum_mesh;
-    CGAL::copy_face_graph(filtered_graph, gum_mesh);
-    if(gum_mesh.is_empty() || !gum_mesh.is_valid())
-    {
-        printf_s("Error: Cannot find gum part\n");
-        return false;
-    }
-    std::vector<hHalfedge> border_halfedges;
-    CGAL::Polygon_mesh_processing::extract_boundary_cycles(gum_mesh, std::back_inserter(border_halfedges));
-    if (border_halfedges.empty())
-    {
-        printf_s("Error: Cannot find trim line\n");
-        return false;
-    }
-    std::vector<std::vector<hHalfedge>> border_cycles;
-    for (hHalfedge hh : border_halfedges)
-    {
-        border_cycles.emplace_back(GetBorderCycle(hh, gum_mesh));
-    }
-
-    printf_s("Found %zd possible trim line. ", border_cycles.size());
-    border_cycles.erase(std::remove_if(border_cycles.begin(), border_cycles.end(), [](std::vector<hHalfedge>& edges){ return edges.size() <= 10; }), border_cycles.end());
-    printf_s("Use %zd of them after removing small ones.\n", border_cycles.size());
-    if(border_cycles.empty())
-    {
-        printf_s("Error: No valid trim line after filtering.\n");
-        return false;
-    }
 
     using AABBPrimitive = CGAL::AABB_face_graph_triangle_primitive<Polyhedron>;
     using AABBTraits = CGAL::AABB_traits<KernelEpick, AABBPrimitive>;
     using AABBTree = CGAL::AABB_tree<AABBTraits>;
     AABBTree aabb_tree(mesh.facets_begin(), mesh.facets_end(), mesh);
-    if(aabb_tree.empty())
+    if (aabb_tree.empty())
     {
         printf_s("Error: Failed to build AABB tree.\n");
         return false;
     }
     std::vector<std::vector<Point_3>> trim_points;
-    for(std::vector<hHalfedge>& trimline : border_cycles)
+    for (auto &comp : components)
     {
-        std::vector<Point_3> points;
-        for (auto hh : trimline)
+        if(comp.size() < 100)
         {
-            points.push_back(hh->vertex()->point());
+            continue;
         }
-        for (size_t iteration = 0; iteration < smooth; iteration++)
+        CGAL::Face_filtered_graph<Polyhedron> filtered_graph(mesh, comp);
+        if (!filtered_graph.is_selection_valid())
         {
-            std::vector<Point_3> new_points = points;
-            for (size_t i = 0; i < new_points.size(); i++)
+            printf_s("Invalid selection!");
+            return false;
+        }
+        Polyhedron gum_mesh;
+        CGAL::copy_face_graph(filtered_graph, gum_mesh);
+        if (gum_mesh.is_empty() || !gum_mesh.is_valid())
+        {
+            printf_s("Error: Cannot find gum part\n");
+            return false;
+        }
+        printf_s("Mesh valid. F = %zd", gum_mesh.size_of_facets());
+        std::vector<hHalfedge> border_halfedges;
+        CGAL::Polygon_mesh_processing::extract_boundary_cycles(gum_mesh, std::back_inserter(border_halfedges));
+        if (border_halfedges.empty())
+        {
+            printf_s("Error: Cannot find trim line\n");
+            return false;
+        }
+        std::vector<std::vector<hHalfedge>> border_cycles;
+        for (hHalfedge hh : border_halfedges)
+        {
+            border_cycles.emplace_back(GetBorderCycle(hh, gum_mesh));
+        }
+
+        printf_s("Found %zd possible trim line. ", border_cycles.size());
+        border_cycles.erase(std::remove_if(border_cycles.begin(), border_cycles.end(), [](std::vector<hHalfedge> &edges)
+                                           { return edges.size() <= 10; }),
+                            border_cycles.end());
+        printf_s("Use %zd of them after removing small ones.\n", border_cycles.size());
+        if (border_cycles.empty())
+        {
+            printf_s("Error: No valid trim line after filtering.\n");
+            return false;
+        }
+        for (std::vector<hHalfedge> &trimline : border_cycles)
+        {
+            std::vector<Point_3> points;
+            for (auto hh : trimline)
             {
-                size_t prev = i == 0 ? new_points.size() - 1 : i - 1;
-                size_t next = i == new_points.size() - 1 ? 0 : i + 1;
-                new_points[i] = CGAL::midpoint(points[prev], points[next]);
-                new_points[i] = aabb_tree.closest_point(new_points[i]);
+                points.push_back(hh->vertex()->point());
             }
-            points = new_points;
+            for (size_t iteration = 0; iteration < smooth; iteration++)
+            {
+                std::vector<Point_3> new_points = points;
+                for (size_t i = 0; i < new_points.size(); i++)
+                {
+                    size_t prev = i == 0 ? new_points.size() - 1 : i - 1;
+                    size_t next = i == new_points.size() - 1 ? 0 : i + 1;
+                    new_points[i] = CGAL::midpoint(points[prev], points[next]);
+                    new_points[i] = aabb_tree.closest_point(new_points[i]);
+                }
+                points = new_points;
+            }
+            trim_points.push_back(std::move(points));
         }
-        trim_points.push_back(std::move(points));
     }
+
+    if (trim_points.size() >= 2)
+    {
+        Merge(trim_points[0], trim_points[1]);
+    }
+
     return WritePoints(trim_points, output_file);
 }
 
@@ -377,14 +498,15 @@ int main(int argc, char *argv[])
         else if (std::strcmp(argv[i], "-h") == 0)
         {
             std::cout << "Extract gum trim line and output it as an .obj file.\n"
-            "-i : file path of input mesh\n"
-            "-o : file path of output mesh\n"
-            "-l : file path of label file.\n"
-            "-s : a non-nagetive integer that specifies the iteration number of trim line smoothing." << std::endl;
+                         "-i : file path of input mesh\n"
+                         "-o : file path of output mesh\n"
+                         "-l : file path of label file.\n"
+                         "-s : a non-nagetive integer that specifies the iteration number of trim line smoothing."
+                      << std::endl;
             return 0;
         }
     }
-    if(input_file.empty() || output_file.empty() || label_file.empty() || smooth < 0)
+    if (input_file.empty() || output_file.empty() || label_file.empty() || smooth < 0)
     {
         std::cout << "Invalid paramters. Use -h for help." << std::endl;
         return -1;

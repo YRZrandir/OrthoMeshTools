@@ -2,7 +2,7 @@
 #define MESH_FIX_H
 #include <string>
 
-void FixMesh(
+bool FixMesh(
     std::string path,
     std::string output_path, 
     bool keep_largest_connected_component,
@@ -14,7 +14,7 @@ void FixMesh(
     bool refine,
     int max_retry);
 
-void FixMeshWithLabel(
+bool FixMeshWithLabel(
     std::string input_mesh,
     std::string output_mesh,
     std::string input_label,

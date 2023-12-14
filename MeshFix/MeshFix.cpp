@@ -30,6 +30,8 @@
 #include <pybind11/pybind11.h>
 #endif
 
+template <typename Kernel, typename SizeType>
+std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face);
 namespace 
 {
 bool gVerbose = false;
@@ -54,13 +56,12 @@ using PairPredUnordered = Polyhedron::PairPredUnordered;
 using PairHash = Polyhedron::PairHash;
 using PairPred = Polyhedron::PairPred;
 
-std::vector<Triangle> FixRoundingOrder(const std::vector<Point_3>& vertices, const std::vector<Triangle>& faces )
+template <typename Kernel, typename SizeType>
+std::vector<TTriangle<SizeType>> FixRoundingOrder(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces )
 {
-    using size_type = Triangle::size_type;
-
-    std::unordered_map<std::pair<size_type, size_type>, std::vector<size_type>, PairHash, PairPred> edgemap;
-    std::vector<size_type> faces_to_remove;
-    for(size_type i = 0; i < faces.size(); i++)
+    std::unordered_map<std::pair<SizeType, SizeType>, std::vector<SizeType>, TPairHash<SizeType>, TPairPred<SizeType>> edgemap;
+    std::vector<SizeType> faces_to_remove;
+    for(SizeType i = 0; i < faces.size(); i++)
     {
         auto& f = faces[i];
         edgemap[{f[0], f[1]}].push_back(i);
@@ -68,7 +69,7 @@ std::vector<Triangle> FixRoundingOrder(const std::vector<Point_3>& vertices, con
         edgemap[{f[2], f[0]}].push_back(i);
     }
 
-    std::unordered_set<std::pair<size_type, size_type>, PairHash, PairPred> problematic_edges;
+    std::unordered_set<std::pair<SizeType, SizeType>, TPairHash<SizeType>, TPairPred<SizeType>> problematic_edges;
     for(auto it = edgemap.begin(); it != edgemap.end(); it++)
     {
         if( it->second.size() > 1)
@@ -77,8 +78,8 @@ std::vector<Triangle> FixRoundingOrder(const std::vector<Point_3>& vertices, con
         }
     }
 
-    std::vector<Triangle> new_faces;
-    for(size_t i = 0; i < faces.size(); i++)
+    std::vector<TTriangle<SizeType>> new_faces;
+    for(SizeType i = 0; i < faces.size(); i++)
     {
         auto& f = faces[i];
         if(problematic_edges.count({f[0], f[1]}) > 0 ||
@@ -96,23 +97,76 @@ std::vector<Triangle> FixRoundingOrder(const std::vector<Point_3>& vertices, con
     return new_faces;
 }
 
-std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, const std::vector<Triangle>& faces, size_t* nb_removed_face)
+template <typename Poly>
+#if BOOST_CXX_VERSION >= 202002L
+    requires std::derived_from<typename Poly::Items, ItemsWithLabelFlag>
+#endif
+void FixSelfIntersection( Poly& m, int max_retry )
 {
-    using size_type = typename Triangle::size_type;
-    std::vector<std::pair<Triangle, bool>> faceflags;
+    static_assert(std::is_base_of_v<ItemsWithLabelFlag, typename Poly::Items>);
+    std::vector<std::pair<typename Poly::Facet_handle, typename Poly::Facet_handle>> intersect_faces;
+    CGAL::Polygon_mesh_processing::self_intersections<CGAL::Parallel_if_available_tag>(m, std::back_inserter(intersect_faces));
+    std::unordered_set<typename Poly::Facet_handle> face_to_remove;
+    for(auto [f1, f2] : intersect_faces)
+    {
+        face_to_remove.insert(f1);  
+        face_to_remove.insert(f2);
+    }
+    for(auto& hf : face_to_remove)
+    {
+        m.erase_facet(hf->halfedge());
+    }
+
+    auto [vertices, triangles] = m.ToVerticesTriangles();
+    std::vector<int> labels;
+    for(auto hv : CGAL::vertices(m))
+    {
+        labels.push_back(hv->_label);
+    }
+    size_t nb_removed_faces = 0;
+    int cnt = 0;
+    do
+    {
+        triangles = RemoveNonManifold<typename Poly::Vertex::Point_3::R, typename Poly::Face::size_type>(vertices, triangles, &nb_removed_faces);
+        if(cnt++ > max_retry)
+            break;
+    } while(nb_removed_faces != 0);
+
+    std::vector<typename Poly::Face::size_type> indices;
+    for(const auto& f : triangles)
+    {
+        indices.push_back(f[0]);
+        indices.push_back(f[1]);
+        indices.push_back(f[2]);
+    }
+    
+    m = Poly(vertices, indices);
+    auto hv = m.vertices_begin();
+    for(size_t i = 0; i < vertices.size(); i++)
+    {
+        hv->_label = labels[i];
+        hv++;
+    }
+}
+}
+template <typename Kernel, typename SizeType>
+std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face)
+{
+    using size_type = SizeType;
+    std::vector<std::pair<TTriangle<SizeType>, bool>> faceflags;
     for(auto& f : faces)
     {
         faceflags.push_back(std::make_pair(f, true));
     }
 
-    std::unordered_map<std::pair<size_type, size_type>, Edge, PairHashUnordered, PairPredUnordered> edges;
-    for(size_type i = 0; i < faceflags.size(); i++)
+    std::unordered_map<std::pair<SizeType, SizeType>, TEdge<SizeType>, TPairHashUnordered<SizeType>, TPairPredUnordered<SizeType>> edges;
+    for(size_t i = 0; i < faceflags.size(); i++)
     {
         const auto& f = faceflags[i].first;
         auto ie0 = edges.find(std::make_pair(f[0], f[1]));
         if(ie0 == edges.end())
         {
-            edges[{f[0], f[1]}] = Edge(f[0], f[1]);
+            edges[{f[0], f[1]}] = TEdge<SizeType>(f[0], f[1]);
             edges[{f[0], f[1]}]._faces.push_back(i);
         }
         else
@@ -123,7 +177,7 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
         auto ie1 = edges.find({f[1], f[2]});
         if(ie1 == edges.end())
         {
-            edges[{f[1], f[2]}] = Edge(f[1], f[2]);
+            edges[{f[1], f[2]}] = TEdge<SizeType>(f[1], f[2]);
             edges[{f[1], f[2]}]._faces.push_back(i);
         }
         else
@@ -134,7 +188,7 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
         auto ie2 = edges.find({f[2], f[0]});
         if(ie2 == edges.end())
         {
-            edges[{f[2], f[0]}] = Edge(f[2], f[0]);
+            edges[{f[2], f[0]}] = TEdge<SizeType>(f[2], f[0]);
             edges[{f[2], f[0]}]._faces.push_back(i);
         }
         else
@@ -143,7 +197,7 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
         }
     }
     
-    std::vector<size_type> problematic_vertices;
+    std::vector<SizeType> problematic_vertices;
     size_t nb_nm_edges = 0;
     for(auto it = edges.begin(); it != edges.end(); it++)
     {
@@ -162,9 +216,9 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
         }
     }
 
-    std::vector<std::vector<size_type>> vneighbors;
+    std::vector<std::vector<SizeType>> vneighbors;
     vneighbors.resize(vertices.size());
-    for(size_type i = 0; i < faceflags.size(); i++)
+    for(size_t i = 0; i < faceflags.size(); i++)
     {
         if(faceflags[i].second)
         {
@@ -187,7 +241,7 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
     for(int iv = 0; iv < vneighbors.size(); iv++)
     {
         auto& neighbors = vneighbors[iv];
-        std::list<std::pair<size_type, size_type>> sur_edges;
+        std::list<std::pair<SizeType, SizeType>> sur_edges;
         size_t nb_connect_faces = neighbors.size();
         std::vector<int> sampled(nb_connect_faces, 0);
         size_t nb_cluster = 0;
@@ -212,9 +266,9 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
                         auto e4 = faceflags[neighbors[j]].first.GetEdge(1);
                         auto e5 = faceflags[neighbors[j]].first.GetEdge(2);
 
-                        if(PairPredUnordered()(e0, e3) || PairPredUnordered()(e0, e4) || PairPredUnordered()(e0, e5) ||
-                        PairPredUnordered()(e1, e3) || PairPredUnordered()(e1, e4) || PairPredUnordered()(e1, e5) ||
-                        PairPredUnordered()(e2, e3) || PairPredUnordered()(e2, e4) || PairPredUnordered()(e2, e5))
+                        if(TPairPredUnordered<SizeType>()(e0, e3) || TPairPredUnordered<SizeType>()(e0, e4) || TPairPredUnordered<SizeType>()(e0, e5) ||
+                        TPairPredUnordered<SizeType>()(e1, e3) || TPairPredUnordered<SizeType>()(e1, e4) || TPairPredUnordered<SizeType>()(e1, e5) ||
+                        TPairPredUnordered<SizeType>()(e2, e3) || TPairPredUnordered<SizeType>()(e2, e4) || TPairPredUnordered<SizeType>()(e2, e5))
                         {
                             cluster.push_back(j);
                             sampled[j] = 1;
@@ -236,7 +290,7 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
         }
     }
 
-    std::vector<Triangle> result_faces;
+    std::vector<TTriangle<SizeType>> result_faces;
     for(const auto& [face, flag] : faceflags)
     {
         if(flag)
@@ -254,55 +308,7 @@ std::vector<Triangle> RemoveNonManifold(const std::vector<Point_3>& vertices, co
     return result_faces;
 }
 
-void FixSelfIntersection( Polyhedron& m, int max_retry )
-{
-    std::vector<std::pair<hFacet, hFacet>> intersect_faces;
-    CGAL::Polygon_mesh_processing::self_intersections<CGAL::Parallel_if_available_tag>(m, std::back_inserter(intersect_faces));
-    std::unordered_set<hFacet> face_to_remove;
-    for(auto [f1, f2] : intersect_faces)
-    {
-        face_to_remove.insert(f1);  
-        face_to_remove.insert(f2);
-    }
-    for(auto& hf : face_to_remove)
-    {
-        m.erase_facet(hf->halfedge());
-    }
-
-    auto [vertices1, triangles1] = m.ToVerticesTriangles();
-    std::vector<int> labels;
-    for(auto hv : CGAL::vertices(m))
-    {
-        labels.push_back(hv->_label);
-    }
-    size_t nb_removed_faces = 0;
-    int cnt = 0;
-    do
-    {
-        triangles1 = RemoveNonManifold(vertices1, triangles1, &nb_removed_faces);
-        if(cnt++ > max_retry)
-            break;
-    } while(nb_removed_faces != 0);
-
-    std::vector<size_t> indices1;
-    for(const auto& f : triangles1)
-    {
-        indices1.push_back(f[0]);
-        indices1.push_back(f[1]);
-        indices1.push_back(f[2]);
-    }
-    
-    m = Polyhedron(vertices1, indices1);
-    auto hv = m.vertices_begin();
-    for(size_t i = 0; i < vertices1.size(); i++)
-    {
-        hv->_label = labels[i];
-        hv++;
-    }
-}
-}
-
-void FixMesh(
+bool FixMesh(
     std::string input_mesh,
     std::string output_mesh, 
     bool keep_largest_connected_component,
@@ -314,18 +320,27 @@ void FixMesh(
     bool refine,
     int max_retry)
 {
-    auto [vertices, faces] = LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh);
-    if(gVerbose)
+    std::vector<KernelEpick::Point_3> vertices;
+    std::vector<Triangle> faces;
+    if(!LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces))
     {
-        std::cout << "Loading " << vertices.size() << " vertices, " << faces.size() << " faces. " << std::endl;
+        printf_s("Error: Failed to read mesh: %s\n", input_mesh.c_str());
+        return false;
     }
-    faces = FixRoundingOrder(vertices, faces);
+    else
+    {
+        if(gVerbose)
+        {
+            printf_s("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
+        }
+    }
+    faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(vertices, faces);
     std::cout << "After fix rounding F=" << faces.size() << std::endl;
     size_t nb_removed_faces = 0;
     int cnt = 0;
     do
     {
-        faces = RemoveNonManifold(vertices, faces, &nb_removed_faces);
+        faces = RemoveNonManifold<KernelEpick, Triangle::size_type>(vertices, faces, &nb_removed_faces);
         if(cnt++ > max_retry)
             break;
     } while (nb_removed_faces != 0);
@@ -399,9 +414,10 @@ void FixMesh(
     {
         std::cout << "Output " << m.size_of_vertices() << " vertices," << m.size_of_facets() << " faces" << std::endl;
     }
+    return true;
 }
 
-void FixMeshWithLabel(
+bool FixMeshWithLabel(
     std::string input_mesh,
     std::string output_mesh,
     std::string input_label,
@@ -416,18 +432,28 @@ void FixMeshWithLabel(
     int max_retry
 )
 {
-    auto [vertices, faces] = LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh);
-    if(gVerbose)
+
+    std::vector<KernelEpick::Point_3> vertices;
+    std::vector<Triangle> faces;
+    if(!LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces))
     {
-        std::cout << "Loading " << vertices.size() << " vertices, " << faces.size() << " faces. " << std::endl;
+        printf_s("Error: Failed to read mesh: %s\n", input_mesh.c_str());
+        return false;
     }
-    faces = FixRoundingOrder(vertices, faces);
+    else
+    {
+        if(gVerbose)
+        {
+            printf_s("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
+        }
+    }
+    faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(vertices, faces);
     std::cout << "After fix rounding F=" << faces.size() << std::endl;
     size_t nb_removed_faces = 0;
     int cnt = 0;
     do
     {
-        faces = RemoveNonManifold(vertices, faces, &nb_removed_faces);
+        faces = RemoveNonManifold<KernelEpick, Triangle::size_type>(vertices, faces, &nb_removed_faces);
         if(cnt++ > max_retry)
             break;
     } while (nb_removed_faces != 0);
@@ -444,7 +470,7 @@ void FixMeshWithLabel(
     if(!m.LoadLabels(input_label))
     {
         std::cout << "Error: failed to load label file: " << input_label << std::endl;
-        return;
+        return false;
     }
     CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);    
 
@@ -480,6 +506,7 @@ void FixMeshWithLabel(
     {
         std::cout << "Output " << m.size_of_vertices() << " vertices," << m.size_of_facets() << " faces" << std::endl;
     }
+    return true;
 }
 
 #ifndef FOUND_PYBIND11

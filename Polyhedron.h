@@ -129,6 +129,7 @@ template <typename Item, typename Kernel>
 class TPolyhedron : public CGAL::Polyhedron_3<Kernel, Item>
 {
 public:
+    static_assert(std::is_base_of_v<CGAL::Polyhedron_items_with_id_3, Item>, "Item has to derive from Polyhedron_items_with_id_3!");
     using Base = CGAL::Polyhedron_3<Kernel, Item>;
     using PolyhedronObjBuilder = TPolyhedronObjBulider<typename Base::HalfedgeDS, Kernel>;
     using Triangle = TTriangle<typename Base::Vertex::size_type>;
@@ -213,7 +214,7 @@ public:
         ofs.close();
     }
 
-    virtual void WriteAssimp( const std::string& path) const
+    virtual bool WriteAssimp( const std::string& path) const
     {
         Assimp::Exporter exporter;
         auto scene = std::make_unique<aiScene>();
@@ -268,7 +269,7 @@ public:
             postfix = "stlb";
         }
         //Assimp::ExportProperties prop;
-        exporter.Export(scene.get(), postfix, path);
+        return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
     }
 
     bool IsSmallHole(typename Base::Halfedge_handle hh, int max_num_hole_edges, float max_hole_diam)
@@ -336,6 +337,7 @@ template <typename Item, typename Kernel>
 class TPolyhedronWithLabel : public TPolyhedron<Item, Kernel>
 {
 public:
+    static_assert(std::is_base_of_v<ItemsWithLabelFlag, Item>, "Item has to derive from ItemsWithLabelFlag!");
     using Base = TPolyhedron<Item, Kernel>;
 
     TPolyhedronWithLabel(const std::vector<typename Kernel::Point_3> &vertices, const std::vector<size_t> &indices)
@@ -421,7 +423,7 @@ public:
         return !ofs.fail();
     }
 
-    virtual void WriteAssimp( const std::string& path) const override
+    virtual bool WriteAssimp( const std::string& path) const override
     {
         static const std::array<aiColor4D, 10> COLORS = {
             aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
@@ -491,7 +493,7 @@ public:
             postfix = "stlb";
         }
         //Assimp::ExportProperties prop;
-        exporter.Export(scene.get(), postfix, path);
+        return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
     }
 };
 
@@ -541,7 +543,7 @@ protected:
 };
 
 template <typename Kernel, typename SizeType>
-std::pair<std::vector<typename Kernel::Point_3>, std::vector<TTriangle<SizeType>>> LoadVFAssimp( const std::string& path )
+bool LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<TTriangle<SizeType>>& faces )
 {
     Assimp::Importer importer;
     importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS,
@@ -549,27 +551,34 @@ std::pair<std::vector<typename Kernel::Point_3>, std::vector<TTriangle<SizeType>
     const aiScene* scene = importer.ReadFile(path, aiProcess_JoinIdenticalVertices | aiProcess_RemoveComponent);
     if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode || scene->mNumMeshes < 1)
     {
-        std::cout << "Input invalid." << std::endl;
-        exit(-1);
+        printf_s("Error: LoadVFAssimp: cannot read mesh.\n");
+        return false;
     }
     const aiMesh* mesh = scene->mMeshes[0];
 
     auto to_cgal = [](const aiVector3D& v) { return typename Kernel::Point_3{v.x, v.y, v.z};};
 
-    std::vector<typename Kernel::Point_3> vertices;
+    vertices.clear();
+    vertices.reserve(mesh->mNumVertices);
     for(uint32_t i = 0; i < mesh->mNumVertices; i++)
     {
         vertices.push_back(to_cgal(mesh->mVertices[i]));
     }
 
-    std::vector<TTriangle<SizeType>> faces;
+    faces.clear();
+    faces.reserve(mesh->mNumVertices);
     for(uint32_t i = 0; i < mesh->mNumFaces; i++)
     {
         const auto& f = mesh->mFaces[i];
+        if(f.mIndices[0] >= mesh->mNumVertices || f.mIndices[1] >= mesh->mNumVertices || f.mIndices[2] >= mesh->mNumVertices)
+        {
+            printf_s("Error: LoadVFAssimp: found bad index.\n");
+            return false;
+        }
         faces.emplace_back(f.mIndices[0], f.mIndices[1], f.mIndices[2]);
     }
 
-    return {vertices, faces};
+    return true;
 }
 
 template <typename Kernel, typename SizeType>
