@@ -204,6 +204,58 @@ namespace
         }
     }
 
+    class Curve
+    {
+    public:
+        void AddPoint(Point_3 p, int label)
+        {
+            _points.push_back(p);
+            _labels.push_back(label);
+        }
+        Point_3& operator[](size_t i)
+        {
+            return _points[i];
+        }
+        const Point_3& operator[](size_t i) const
+        {
+            return _points[i];
+        }
+        int& Label(size_t i)
+        {
+            return _labels[i];
+        }
+        const int& Label(size_t i) const
+        {
+            return _labels[i];
+        }
+        void UpdateData()
+        {
+            std::unordered_map<int, int> counts;
+            
+            for(size_t i = 0; i < _points.size(); i++)
+            {
+                counts[_labels[i]]++;
+                if(_centroids.count(_labels[i]) == 0)
+                {
+                    _centroids.insert({_labels[i], KernelEpick::Vector_3(0.0, 0.0, 0.0)});
+                }
+                _centroids[_labels[i]] += _points[i] - CGAL::ORIGIN;
+            }
+            for(auto& [label, c] : _centroids)
+            {
+                c /= counts[label];
+            }
+
+            
+        }
+
+    protected:
+        std::vector<Point_3> _points;
+        std::vector<int> _labels;
+        std::unordered_map<int, KernelEpick::Vector_3> _centroids;
+        std::unordered_map<int, Vec3> _upwards;
+    };
+
     std::vector<Point_3> Merge(const std::vector<Point_3> &points0, const std::vector<Point_3> &points1)
     {
         std::pair<size_t, size_t> closest_pair;
@@ -339,9 +391,10 @@ namespace
     }
 }
 
-void FixMesh(
+bool FixMeshWithLabel(
     const std::vector<KernelEpick::Point_3>& input_vertices,
-    const std::vector<Polyhedron::Triangle>& input_faces,
+    const std::vector<TTriangle<size_t>>& input_faces,
+    const std::vector<int>& input_labels,
     Polyhedron& output_mesh,
     bool keep_largest_connected_component,
     int large_cc_threshold,
@@ -482,7 +535,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
             target->_label = source->_label;
         }
         auto [gum_mesh_vertices, gum_mesh_faces] = gum_mesh.ToVerticesTriangles();
-        FixMesh(gum_mesh_vertices, gum_mesh_faces, gum_mesh, false, 0, false, true, 100, 200, false, 10);
+        FixMeshWithLabel(gum_mesh_vertices, gum_mesh_faces, gum_mesh.WriteLabels(), gum_mesh, false, 0, false, true, 100, 200, false, 10);
         if (gum_mesh.is_empty() || !gum_mesh.is_valid())
         {
             throw AlgError("Cannot find gum part");
@@ -503,8 +556,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
 
         printf("Found %zd possible trim line. ", border_cycles.size());
         border_cycles.erase(std::remove_if(border_cycles.begin(), border_cycles.end(), [](std::vector<hHalfedge> &edges)
-                                           { return edges.size() <= 10; }),
-                            border_cycles.end());
+                                           { return edges.size() <= 10; }), border_cycles.end());
         printf("Use %zd of them after removing small ones.\n", border_cycles.size());
         if (border_cycles.empty())
         {
@@ -532,7 +584,6 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
             trim_points.push_back(std::move(points));
         }
     }
-
 
     if (trim_points.size() >= 2)
     {

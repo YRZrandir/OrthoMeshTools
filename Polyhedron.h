@@ -437,6 +437,29 @@ public:
         }
     }
 
+    void LoadLabels( const std::vector<int>& labels)
+    {
+        if(labels.size() != this->size_of_vertices())
+        {
+            throw MeshError("Number of labels != number of vertices");
+        }
+        
+        for(auto hv = this->vertices_begin(); hv != this->vertices_end(); hv++)
+        {
+            hv->_label = labels[hv->id()];
+            if(hv->_label == 100 || hv->_label < 10)
+                hv->_label = 0;
+        }
+
+        for(auto hf : CGAL::faces(*this))
+        {
+            int l0 = hf->halfedge()->vertex()->_label;
+            int l1 = hf->halfedge()->next()->vertex()->_label;
+            int l2 = hf->halfedge()->prev()->vertex()->_label;
+            hf->_label = std::max(l0, std::max(l1, l2));
+        }
+    }
+
     void WriteLabels( const std::string& path ) const
     {
         using namespace nlohmann;
@@ -496,6 +519,16 @@ public:
         }
     }
     
+    std::vector<int> WriteLabels() const
+    {
+        std::vector<int> labels;
+        for (auto hv : CGAL::vertices(*this))
+        {
+            labels.push_back(hv->_label);
+        }
+        return labels;
+    }
+
     virtual void WriteOBJ(const std::string &path) override
     {
         static const std::array<aiColor4D, 10> COLORS = {

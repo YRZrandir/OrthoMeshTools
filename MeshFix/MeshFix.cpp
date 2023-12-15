@@ -487,3 +487,68 @@ bool FixMeshWithLabel(
     m.WriteLabels(output_label, input_label);
     return true;
 }
+
+bool FixMeshWithLabel(
+    const std::vector<KernelEpick::Point_3>& input_vertices,
+    const std::vector<Triangle>& input_faces,
+    const std::vector<int>& input_labels,
+    Polyhedron& output_mesh,
+    bool keep_largest_connected_component,
+    int large_cc_threshold,
+    bool fix_self_intersection,
+    bool filter_small_holes,
+    int max_hole_edges,
+    float max_hole_diam,
+    bool refine,
+    int max_retry
+)
+{
+    auto faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(input_vertices, input_faces);
+    std::cout << "After fix rounding F=" << faces.size() << std::endl;
+    size_t nb_removed_faces = 0;
+    int cnt = 0;
+    do
+    {
+        faces = RemoveNonManifold<KernelEpick, Triangle::size_type>(input_vertices, faces, &nb_removed_faces);
+        if(cnt++ >= max_retry)
+            break;
+    } while (nb_removed_faces != 0);
+    if(cnt >= max_retry)
+    {
+        throw AlgError("Cannot remove non-manifold parts. Try increasing retry times.");
+    }
+    Polyhedron m;
+    m.BuildFromVerticesFaces(input_vertices, faces);
+
+    m.LoadLabels(input_labels);
+
+    CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);    
+
+    if(fix_self_intersection)
+    {
+        FixSelfIntersection(m, max_retry);
+    }
+
+    if(keep_largest_connected_component)
+    {
+        size_t num = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, large_cc_threshold);
+        if(gVerbose)
+        {
+            std::cout << "Remove " << num << " small connected components." << std::endl;
+        }
+    }
+
+    std::vector<hHalfedge> border_edges;
+    CGAL::Polygon_mesh_processing::extract_boundary_cycles(m, std::back_inserter(border_edges));
+    for(hHalfedge hh : border_edges)
+    {
+        if(!filter_small_holes || (filter_small_holes && m.IsSmallHole(hh, max_hole_edges, max_hole_diam)))
+        {
+            std::vector<hFacet> patch_faces;
+            CGAL::Polygon_mesh_processing::triangulate_hole(m, hh, std::back_inserter(patch_faces));
+        }
+    }
+    
+    output_mesh = m;
+    return true;
+}
