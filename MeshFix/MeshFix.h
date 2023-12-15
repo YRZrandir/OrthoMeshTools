@@ -1,6 +1,8 @@
 #ifndef MESH_FIX_H
 #define MESH_FIX_H
 #include <string>
+#include "../Polyhedron.h"
+
 
 bool FixMesh(
     std::string path,

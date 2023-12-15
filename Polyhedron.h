@@ -231,7 +231,7 @@ public:
         CGAL::IO::write_OFF(ofs, *this);
     }
 
-    void WriteOBJ(const std::string &path)
+    virtual void WriteOBJ(const std::string &path)
     {
         CGAL::set_halfedgeds_items_id(*this);
         std::stringstream ss;
@@ -247,7 +247,7 @@ public:
             size_t v0 = hf->halfedge()->vertex()->id();
             size_t v1 = hf->halfedge()->next()->vertex()->id();
             size_t v2 = hf->halfedge()->prev()->vertex()->id();
-            ss << "f " << v0 << "//" << e0 << ' ' << v1 << "//" << e1 << ' ' << v2 << "//" << e2 << '\n';
+            ss << "f " << v0 + 1 << "//" << e0 + 1 << ' ' << v1 + 1 << "//" << e1 + 1 << ' ' << v2 + 1 << "//" << e2 + 1 << '\n';
         }
         std::ofstream ofs(path);
         ofs << ss.rdbuf();
@@ -495,7 +495,43 @@ public:
             throw IOError("Failed to write label file: " + path);
         }
     }
-
+    
+    virtual void WriteOBJ(const std::string &path) override
+    {
+        static const std::array<aiColor4D, 10> COLORS = {
+            aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
+            aiColor4D{255.0f / 255, 190.0f / 255, 122.0f / 255, 1.0},
+            aiColor4D{250.0f / 255, 127.0f / 255, 111.0f / 255, 1.0},
+            aiColor4D{130.0f / 255, 176.0f / 255, 210.0f / 255, 1.0},
+            aiColor4D{190.0f / 255, 184.0f / 255, 220.0f / 255, 1.0},
+            aiColor4D{40.0f / 255, 120.0f / 255, 181.0f / 255, 1.0},
+            aiColor4D{248.0f / 255, 172.0f / 255, 140.0f / 255, 1.0},
+            aiColor4D{255.0f / 255, 136.0f / 255, 132.0f / 255, 1.0},
+            aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
+            aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
+        };
+        CGAL::set_halfedgeds_items_id(*this);
+        std::stringstream ss;
+        for (auto hv = this->vertices_begin(); hv != this->vertices_end(); hv++)
+        {
+            aiColor4D c = COLORS[hv->_label % COLORS.size()];
+            ss << "v " << hv->point().x() << ' ' << hv->point().y() << ' ' << hv->point().z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+        }
+        for (auto hf = this->facets_begin(); hf != this->facets_end(); hf++)
+        {
+            size_t e0 = hf->halfedge()->id();
+            size_t e1 = hf->halfedge()->next()->id();
+            size_t e2 = hf->halfedge()->prev()->id();
+            size_t v0 = hf->halfedge()->vertex()->id();
+            size_t v1 = hf->halfedge()->next()->vertex()->id();
+            size_t v2 = hf->halfedge()->prev()->vertex()->id();
+            ss << "f " << v0 + 1 << "//" << e0 + 1 << ' ' << v1 + 1 << "//" << e1 + 1 << ' ' << v2 + 1 << "//" << e2 + 1 << '\n';
+        }
+        std::ofstream ofs(path);
+        ofs << ss.rdbuf();
+        ofs.close();
+    }
+    
     virtual void WriteAssimp( const std::string& path) override
     {
         static const std::array<aiColor4D, 10> COLORS = {

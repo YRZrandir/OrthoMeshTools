@@ -1,6 +1,7 @@
 #include <deque>
 #include <iostream>
 #include <filesystem>
+#include <unordered_map>
 #include "../Polyhedron.h"
 #include <CGAL/AABB_tree.h>
 #include <CGAL/AABB_face_graph_triangle_primitive.h>
@@ -10,6 +11,7 @@
 #include <CGAL/boost/graph/io.h>
 #include <CGAL/Polygon_mesh_processing/border.h>
 #include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
+#include "../MeshFix/MeshFix.h"
 
 namespace
 {
@@ -83,21 +85,11 @@ namespace
 
     std::vector<hHalfedge> GetBorderCycle(hHalfedge border, Polyhedron &mesh)
     {
-        hHalfedge hh = border;
         std::vector<hHalfedge> borders;
-        do
+        for(auto hh : CGAL::halfedges_around_face(border, mesh))
         {
             borders.push_back(hh);
-            for (auto nei : CGAL::halfedges_around_source(hh->vertex(), mesh))
-            {
-                if (nei->is_border())
-                {
-                    hh = nei;
-                    break;
-                }
-            }
-        } while (hh != border);
-
+        }
         return borders;
     }
 
@@ -229,94 +221,137 @@ namespace
             }
         }
 
+        KernelEpick::Line_3 line(points0[closest_pair.first], points1[closest_pair.second]);
+        KernelEpick::Vector_3 line_dir = points1[closest_pair.second] - points0[closest_pair.first];
+
+        double w0 = 1.0f;
+        double w1 = 0.0f;
         std::pair<size_t, size_t> end_pair;
-        double max_angle = 0.f;
-        bool flag = false;
-        for (size_t i = 0; i < points0.size() && !flag; i++)
-        {
-            size_t next_i = (closest_pair.first + i) % points0.size();
-            KernelEpick::Vector_3 vec_i = points0[(next_i + 1) % points0.size()] - points0[next_i];
-            for (size_t j = 0; j < points1.size(); j++)
-            {
-                size_t next_j = (closest_pair.second + j) % points1.size();
-                KernelEpick::Vector_3 vec_j = points0[(next_j + 1) % points1.size()] - points1[next_j];
-                double ang = CGAL::approximate_angle(vec_i, vec_j);
-                if (ang > max_angle)
-                {
-                    end_pair = {i, j};
-                    max_angle = ang;
-                }
-                else
-                {
-                    flag = true;
-                    break;
-                }
-            }
-        }
-
-        max_angle = 0.f;
-        flag = false;
         std::pair<size_t, size_t> start_pair;
-        for (size_t i = 0; i < points0.size() && !flag; i++)
-        {
-            size_t prev_i = (closest_pair.first + points0.size() - i - 1) % points0.size();
-            KernelEpick::Vector_3 vec_i = points0[prev_i] - points0[(prev_i + 1) % points0.size()];
-            for (size_t j = 0; j < points1.size(); j++)
-            {
-                size_t prev_j = (closest_pair.second + points1.size() - j - 1) % points1.size();
-                KernelEpick::Vector_3 vec_j = points1[prev_j] - points1[(prev_j + 1) % points1.size()];
-                double ang = CGAL::approximate_angle(vec_i, vec_j);
-                if (ang > max_angle)
-                {
-                    start_pair = {i, j};
-                    max_angle = ang;
-                }
-                else
-                {
-                    flag = true;
-                    break;
-                }
-            }
-        }
-
-        std::ofstream ofs("./merge.obj");
+        double max_score = -999.0;
         for (size_t i = 0; i < points0.size(); i++)
         {
-            CGAL::Color c(0, 0, 0);
-            if (i == closest_pair.first)
+            size_t idx = (closest_pair.first + i) % points0.size();
+            KernelEpick::Vector_3 vec = points0[(idx + 1) % points0.size()] - points0[idx];
+            double distance_score = std::sqrt(CGAL::squared_distance(line.projection(points0[idx]), points0[idx]));
+            double direction_score = CGAL::approximate_angle(line_dir, vec);
+            double score = w0 * distance_score + w1 * distance_score;
+            if(score >= max_score)
             {
-                c = CGAL::Color(0, 255, 0);
+                max_score = score;
+                end_pair.first = idx;
             }
-            if (i == start_pair.first)
+            else
             {
-                c = CGAL::Color(255, 0, 0);
+                break;
             }
-            if (i == end_pair.first)
-            {
-                c = CGAL::Color(0, 0, 255);
-            }
-            ofs << "v " << points0[i].x() << ' ' << points0[i].y() << ' ' << points0[i].z() << ' ' << c.r() << ' ' << c.g() << ' ' << c.b() << '\n';
         }
+        max_score = -999.0;
         for (size_t i = 0; i < points1.size(); i++)
         {
-            CGAL::Color c(0, 0, 0);
-            if (i == closest_pair.second)
+            size_t idx = (closest_pair.first + i) % points1.size();
+            KernelEpick::Vector_3 vec = points1[(idx + 1) % points1.size()] - points1[idx];
+            double distance_score = std::sqrt(CGAL::squared_distance(line.projection(points1[idx]), points1[idx]));
+            double direction_score = 180.0 - CGAL::approximate_angle(line_dir, vec);
+            double score = w0 * distance_score + w1 * distance_score;
+            if(score >= max_score)
             {
-                c = CGAL::Color(0, 255, 0);
+                max_score = score;
+                end_pair.second = idx;
             }
-            if (i == start_pair.second)
+            else
             {
-                c = CGAL::Color(255, 0, 0);
+                break;
             }
-            if (i == end_pair.second)
-            {
-                c = CGAL::Color(0, 0, 255);
-            }
-            ofs << "v " << points1[i].x() << ' ' << points1[i].y() << ' ' << points1[i].z() << ' ' << c.r() << ' ' << c.g() << ' ' << c.b() << '\n';
         }
-        return points0;
+        max_score = -999.0;
+        for (size_t i = 0; i < points0.size(); i++)
+        {
+            size_t idx = (closest_pair.first + points0.size() - i - 1) % points0.size();
+            KernelEpick::Vector_3 vec = points0[idx] - points0[(idx + 1) % points0.size()];
+            double distance_score = std::sqrt(CGAL::squared_distance(line.projection(points0[idx]), points0[idx]));
+            double direction_score = CGAL::approximate_angle(line_dir, vec);
+            double score = w0 * distance_score + w1 * distance_score;
+            if(score >= max_score)
+            {
+                max_score = score;
+                start_pair.first = idx;
+            }
+            else
+            {
+                break;
+            }
+        }
+        max_score = -999.0;
+        for (size_t i = 0; i < points1.size(); i++)
+        {
+            size_t idx = (closest_pair.second + points1.size() - i - 1) % points1.size();
+            KernelEpick::Vector_3 vec = points1[idx] - points1[(idx + 1) % points1.size()];
+            double distance_score = std::sqrt(CGAL::squared_distance(line.projection(points1[idx]), points1[idx]));
+            double direction_score = 180.0 - CGAL::approximate_angle(line_dir, vec);
+            double score = w0 * distance_score + w1 * distance_score;
+            if(score >= max_score)
+            {
+                max_score = score;
+                start_pair.second = idx;
+            }
+            else
+            {
+                break;
+            }
+        }
+        
+        std::vector<Point_3> result;
+        size_t idx = end_pair.first;
+        while(idx != start_pair.first)
+        {
+            result.push_back(points0[idx]);
+            idx++;
+            if(idx == points0.size())
+            {
+                idx = 0;
+            }
+        }
+        for(int i = 0; i < 20; i++)
+        {
+            result.push_back(points0[start_pair.first] + (points1[end_pair.second] - points0[start_pair.first]) * (double)i / 20.0);
+        }
+        idx = end_pair.second;
+        while(idx != start_pair.second)
+        {
+            result.push_back(points1[idx]);
+            idx++;
+            if(idx == points1.size())
+            {
+                idx = 0;
+            }
+        }
+        for(int i = 0; i < 20; i++)
+        {
+            result.push_back(points1[start_pair.second] + (points0[end_pair.first] - points1[start_pair.second]) * (double)i / 20.0);
+        }
+        std::ofstream ofs("./merge" + std::to_string(result.size()) + ".obj");
+        for (size_t i = 0; i < result.size(); i++)
+        {
+            ofs << "v " << result[i].x() << ' ' << result[i].y() << ' ' << result[i].z() << '\n';
+        }
+        return result;
     }
 }
+
+void FixMesh(
+    const std::vector<KernelEpick::Point_3>& input_vertices,
+    const std::vector<Polyhedron::Triangle>& input_faces,
+    Polyhedron& output_mesh,
+    bool keep_largest_connected_component,
+    int large_cc_threshold,
+    bool fix_self_intersection,
+    bool filter_small_holes,
+    int max_hole_edges,
+    float max_hole_diam,
+    bool refine,
+    int max_retry
+);
 
 bool GumTrimLine(std::string input_file, std::string label_file, std::string output_file, int smooth)
 {
@@ -371,8 +406,53 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     }
     printf("Found %zd gum part by label\n", components.size());
 
-    std::sort(components.begin(), components.end(), [](auto &lh, auto &rh)
-              { return lh.size() > rh.size(); });
+    std::sort(components.begin(), components.end(),
+        [](auto &lh, auto &rh) 
+        {
+            int maxl = 0;
+            int minl = 100;
+            int maxr = 0;
+            int minr = 100;
+            for(auto hf : lh)
+            {
+                if(hf->_label != 0)
+                {
+                    int l = hf->_label;
+                    if(l <= 18 && l >= 11)
+                    {
+                        l = 29 - l;
+                    }
+                    else if(l >= 31 && l <= 38)
+                    {
+                        l = 69 - l;
+                    }
+                    maxl = std::max(maxl, l);
+                    minl = std::min(minl, l);
+                }
+            }
+            for(auto hf : rh)
+            {
+                if(hf->_label != 0)
+                {
+                    int l = hf->_label;
+                    if(l <= 18 && l >= 11)
+                    {
+                        l = 29 - l;
+                    }
+                    else if(l >= 31 && l <= 38)
+                    {
+                        l = 69 - l;
+                    }
+                    maxr = std::max(maxr, l);
+                    minr = std::min(minr, l);
+                }
+            }
+            if(minl != minr)
+            {
+                return minl < minr;
+            }
+            return maxl < maxr;
+        });
 
     using AABBPrimitive = CGAL::AABB_face_graph_triangle_primitive<Polyhedron>;
     using AABBTraits = CGAL::AABB_traits<KernelEpick, AABBPrimitive>;
@@ -395,18 +475,26 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
             throw AlgError("Invalid part selection!");
         }
         Polyhedron gum_mesh;
-        CGAL::copy_face_graph(filtered_graph, gum_mesh);
+        std::vector<std::pair<hVertex, hVertex>> vtx_map;
+        CGAL::copy_face_graph(filtered_graph, gum_mesh, CGAL::parameters::vertex_to_vertex_output_iterator(std::back_inserter(vtx_map)));
+        for(auto& [source, target] : vtx_map)
+        {
+            target->_label = source->_label;
+        }
+        auto [gum_mesh_vertices, gum_mesh_faces] = gum_mesh.ToVerticesTriangles();
+        FixMesh(gum_mesh_vertices, gum_mesh_faces, gum_mesh, false, 0, false, true, 100, 200, false, 10);
         if (gum_mesh.is_empty() || !gum_mesh.is_valid())
         {
             throw AlgError("Cannot find gum part");
         }
-        printf("Mesh valid. F = %zd", gum_mesh.size_of_facets());
+        printf("Mesh valid. F = %zd\n", gum_mesh.size_of_facets());
         std::vector<hHalfedge> border_halfedges;
         CGAL::Polygon_mesh_processing::extract_boundary_cycles(gum_mesh, std::back_inserter(border_halfedges));
         if (border_halfedges.empty())
         {
             throw AlgError("Cannot find trim line");
         }
+        printf("Found %zd borders\n", border_halfedges.size());
         std::vector<std::vector<hHalfedge>> border_cycles;
         for (hHalfedge hh : border_halfedges)
         {
@@ -445,10 +533,16 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         }
     }
 
+
     if (trim_points.size() >= 2)
     {
-        Merge(trim_points[0], trim_points[1]);
+        //Merge(trim_points[0], trim_points[1]);
+        for(int i = 1; i < trim_points.size(); i++)
+        {
+            trim_points[0] = Merge(trim_points[0], trim_points[i]);
+        }
     }
+    trim_points.resize(1);
 
     return WritePoints(trim_points, output_file);
 }
@@ -495,10 +589,13 @@ int main(int argc, char *argv[])
         std::cout << "Invalid paramters. Use -h for help." << std::endl;
         return -1;
     }
-    if (!GumTrimLine(input_file, label_file, output_file, smooth))
+    try
     {
-        printf("GumTrimLine Failed.\n");
-        return -1;
+        GumTrimLine(input_file, label_file, output_file, smooth);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
     }
     return 0;
 }

@@ -32,9 +32,9 @@
 
 template <typename Kernel, typename SizeType>
 std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face);
+bool gVerbose = true;
 namespace 
 {
-bool gVerbose = false;
 
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
 using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
@@ -308,9 +308,10 @@ std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Ke
     return result_faces;
 }
 
-bool FixMesh(
-    std::string input_mesh,
-    std::string output_mesh, 
+void FixMesh(
+    const std::vector<KernelEpick::Point_3>& input_vertices,
+    const std::vector<Triangle>& input_faces,
+    Polyhedron& output_mesh,
     bool keep_largest_connected_component,
     int large_cc_threshold,
     bool fix_self_intersection,
@@ -318,23 +319,17 @@ bool FixMesh(
     int max_hole_edges,
     float max_hole_diam,
     bool refine,
-    int max_retry)
+    int max_retry
+)
 {
-    std::vector<KernelEpick::Point_3> vertices;
-    std::vector<Triangle> faces;
-    LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
-    if(gVerbose)
-    {
-        printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
-    }
-    faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(vertices, faces);
+    auto faces = FixRoundingOrder<KernelEpick, Triangle::size_type>(input_vertices, input_faces);
     std::cout << "After fix rounding F = " << faces.size() << std::endl;
 
     size_t nb_removed_faces = 0;
     int cnt = 0;
     do
     {
-        faces = RemoveNonManifold<KernelEpick, Triangle::size_type>(vertices, faces, &nb_removed_faces);
+        faces = RemoveNonManifold<KernelEpick, Triangle::size_type>(input_vertices, faces, &nb_removed_faces);
         if(cnt++ >= max_retry)
             break;
     } while (nb_removed_faces != 0);
@@ -344,7 +339,7 @@ bool FixMesh(
     }
 
     Polyhedron m;
-    m.BuildFromVerticesFaces(vertices, faces);
+    m.BuildFromVerticesFaces(input_vertices, faces);
     
     CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);
 
@@ -381,10 +376,37 @@ bool FixMesh(
             }
         }
     }
-    m.WriteAssimp(output_mesh);
+
+    output_mesh = m;
+}
+
+bool FixMesh(
+    std::string input_mesh,
+    std::string output_mesh, 
+    bool keep_largest_connected_component,
+    int large_cc_threshold,
+    bool fix_self_intersection,
+    bool filter_small_holes,
+    int max_hole_edges,
+    float max_hole_diam,
+    bool refine,
+    int max_retry)
+{
+    std::vector<KernelEpick::Point_3> vertices;
+    std::vector<Triangle> faces;
+    LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
     if(gVerbose)
     {
-        printf("Output V = %zd, F = %zd.\n", m.size_of_vertices(), m.size_of_facets());
+        printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
+    }
+    Polyhedron result;
+    FixMesh(vertices, faces, result, keep_largest_connected_component,
+     large_cc_threshold, fix_self_intersection,
+      filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
+    result.WriteAssimp(output_mesh);
+    if(gVerbose)
+    {
+        printf("Output V = %zd, F = %zd.\n", result.size_of_vertices(), result.size_of_facets());
     }
     return true;
 }
@@ -465,134 +487,3 @@ bool FixMeshWithLabel(
     m.WriteLabels(output_label, input_label);
     return true;
 }
-
-#ifndef FOUND_PYBIND11
-int main(int argc, char* argv[])
-{
-    auto print_help_msg = []()
-    {
-        std::cout << "usage:\n"
-        "\t-i filename \tPath to input mesh.\n"
-        "\t-o filename \tFile name of output mesh.\n"
-        "\t-k threshold\tDelete connected components smaller than threshold (default=off)\n"
-        "\t-s \tFix self intersection\n"
-        "\t-f max_hole_edges max_hole_diam\t Do not fill holes that satisfiy (edge number > max_hole_edges) OR (AABB size > max_hole_diam)\n"
-        "\t-r refine after filling holes.\n"
-        "\t-m max_retry The program will repeatedly try to fix the mesh, this is the max retry time. (default=10)"
-        "\t-v \tPrint debug messages" << std::endl;
-    };
-    if(argc < 2 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)
-    {
-        print_help_msg();
-        return -1;
-    }
-    std::string path;
-    std::string output_path;
-    std::string input_label;
-    std::string output_label;
-    bool keep_largest_connected_component = false;
-    int large_cc_threshold = 100;
-    bool fix_self_intersection = false;
-    bool filter_small_holes = false;
-    int max_hole_edges = std::numeric_limits<int>::max();
-    float max_hole_diam = std::numeric_limits<float>::max();
-    bool refine = false;
-    int max_retry = 10;
-
-    for(int i = 1; i < argc; i++)
-    {
-        if(strcmp(argv[i], "-i") == 0)
-        {
-            path = std::string(argv[i + 1]);
-        }
-        else if (strcmp(argv[i], "-o") == 0)
-        {
-            output_path = std::string(argv[i + 1]);
-        }
-        else if (strcmp(argv[i], "-v") == 0)
-        {
-            gVerbose = true;
-        }
-        else if (strcmp(argv[i], "-k") == 0)
-        {
-            keep_largest_connected_component = true;
-            if(i < argc - 1 && std::atoi(argv[i+1]) != 0)
-            {
-                large_cc_threshold = std::atoi(argv[i + 1]);
-            }
-        }
-        else if (strcmp(argv[i], "-s") == 0)
-        {
-            fix_self_intersection = true;
-        }
-        else if (strcmp(argv[i], "-f") == 0)
-        {
-            filter_small_holes = true;
-            max_hole_edges = std::atoi(argv[i+1]);
-            max_hole_diam = static_cast<float>(std::atof(argv[i+2]));
-        }
-        else if (strcmp(argv[i], "-r") == 0)
-        {
-            refine = true;
-        }
-        else if (strcmp(argv[i], "-m") == 0)
-        {
-            max_retry = std::atoi(argv[i+1]);
-        }
-        else if (strcmp(argv[i], "-li") == 0)
-        {
-            input_label = std::string(argv[i + 1]);
-        }
-        else if (strcmp(argv[i], "-lo") == 0)
-        {
-            output_label = std::string(argv[i + 1]);
-        }
-    }
-    if(path.empty() || output_path.empty())
-    {
-        print_help_msg();
-        return -1;
-    }
-    try
-    {
-        if(!input_label.empty() && !output_label.empty())
-        {
-            FixMeshWithLabel(
-                path,
-                output_path,
-                input_label,
-                output_label,
-                keep_largest_connected_component,
-                large_cc_threshold,
-                fix_self_intersection, 
-                filter_small_holes, 
-                max_hole_edges, 
-                max_hole_diam, 
-                refine,
-                max_retry
-            );
-        }
-        else
-        {
-            FixMesh( 
-                path,
-                output_path,
-                keep_largest_connected_component,
-                large_cc_threshold,
-                fix_self_intersection, 
-                filter_small_holes, 
-                max_hole_edges, 
-                max_hole_diam, 
-                refine,
-                max_retry
-            );
-        }
-    }
-    catch( const std::exception& e)
-    {
-        std::cout << e.what() << std::endl;
-        return -1;
-    }
-    return 0;
-}
-#endif
