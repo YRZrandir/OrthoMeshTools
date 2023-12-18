@@ -160,6 +160,7 @@ public:
     using PairPredUnordered = TPairPredUnordered<typename Base::Vertex::size_type>;
     using PairHash = TPairHash<typename Base::Vertex::size_type>;
     using PairPred = TPairPred<typename Base::Vertex::size_type>;
+    using K = Kernel;
 
     TPolyhedron() = default;
 
@@ -401,40 +402,7 @@ public:
 
     void LoadLabels( const std::string& path )
     {
-        using namespace nlohmann;
-        CGAL::set_halfedgeds_items_id(*this);
-
-        std::ifstream label_ifs( path );
-        if(label_ifs.fail())
-        {
-            throw IOError("Cannot open file: " + path);
-        }
-        json data = json::parse( label_ifs );
-        if (data.find( "labels" ) == data.end())
-        {
-            throw IOError("Cannot find key 'labels' in json file " + path);
-        }
-        
-        std::vector<int> labels = data["labels"].get<std::vector<int>>();
-        if(labels.size() != this->size_of_vertices())
-        {
-            throw IOError("Number of labels != number of vertices");
-        }
-        
-        for(auto hv = this->vertices_begin(); hv != this->vertices_end(); hv++)
-        {
-            hv->_label = labels[hv->id()];
-            if(hv->_label == 100 || hv->_label < 10)
-                hv->_label = 0;
-        }
-
-        for(auto hf : CGAL::faces(*this))
-        {
-            int l0 = hf->halfedge()->vertex()->_label;
-            int l1 = hf->halfedge()->next()->vertex()->_label;
-            int l2 = hf->halfedge()->prev()->vertex()->_label;
-            hf->_label = std::max(l0, std::max(l1, l2));
-        }
+        LoadLabels(::LoadLabels(path));
     }
 
     void LoadLabels( const std::vector<int>& labels)
@@ -451,12 +419,57 @@ public:
                 hv->_label = 0;
         }
 
+        UpdateFaceLabels();
+    }
+    
+    void UpdateFaceLabels()
+    {
         for(auto hf : CGAL::faces(*this))
         {
             int l0 = hf->halfedge()->vertex()->_label;
             int l1 = hf->halfedge()->next()->vertex()->_label;
             int l2 = hf->halfedge()->prev()->vertex()->_label;
             hf->_label = std::max(l0, std::max(l1, l2));
+        }
+    }
+
+    void UpdateFaceLabels2()
+    {
+        for(auto hf : CGAL::faces(*this))
+        {
+            int l0 = hf->halfedge()->vertex()->_label;
+            int l1 = hf->halfedge()->next()->vertex()->_label;
+            int l2 = hf->halfedge()->prev()->vertex()->_label;
+            if(l0 == l1 && l0 == l2)
+            {
+                hf->_label = l0;
+                continue;
+            }
+            if(l0 == 0 || l1 == 0 || l2 == 0)
+            {
+                hf->_label = 0;
+                continue;
+            }
+            if(l0 != l1 && l0 != l2 && l1 != l2)
+            {
+                hf->_label = std::max(l0, std::max(l1, l2));
+                continue;
+            }
+            if(l0 == l1 && l0 != l2)
+            {
+                hf->_label = l0;
+                continue;
+            }
+            if(l1 == l2 && l1 != l0)
+            {
+                hf->_label = l1;
+                continue;
+            }
+            if(l0 == l2 && l0 != l1)
+            {
+                hf->_label = l0;
+                continue;
+            }
         }
     }
 
@@ -812,6 +825,8 @@ bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3
         //Assimp::ExportProperties prop;
         return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
 }
+
+std::vector<int> LoadLabels( std::string path );
 
 template <typename Facet_handle>
 Facet_handle::value_type::Vertex::Point_3::R::Vector_3 FaceNormal(Facet_handle hf)

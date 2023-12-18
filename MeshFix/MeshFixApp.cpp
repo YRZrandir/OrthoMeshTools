@@ -92,7 +92,7 @@ int main(int argc, char* argv[])
     {
         if(!input_label.empty() && !output_label.empty())
         {
-            FixMeshWithLabel(
+            FixMeshFileWithLabel(
                 path,
                 output_path,
                 input_label,
@@ -109,7 +109,7 @@ int main(int argc, char* argv[])
         }
         else
         {
-            FixMesh( 
+            FixMeshFile( 
                 path,
                 output_path,
                 keep_largest_connected_component,

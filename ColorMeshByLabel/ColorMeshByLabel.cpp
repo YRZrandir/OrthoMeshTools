@@ -4,20 +4,6 @@
 #include "../Polyhedron.h"
 #include "CGAL/Simple_cartesian.h"
 
-std::vector<int> LoadLabels(std::string path)
-{
-    using namespace nlohmann;
-    std::ifstream label_ifs( path );
-    json data = json::parse( label_ifs );
-    if (data.find( "labels" ) == data.end())
-    {
-        std::cout << "Invalid Json" << std::endl;
-        std::terminate();
-    }
-    std::vector<int> labels = data["labels"].get<std::vector<int>>();
-    return labels;
-}
-
 bool ColorMeshByLabel( std::string input_file, std::string input_labels, std::string output_file )
 {
     std::vector<CGAL::Simple_cartesian<double>::Point_3> vertices;
