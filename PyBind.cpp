@@ -26,7 +26,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("output_labels"),
         py::arg("size_threshold"));
     
-    m.def("FixMesh", &FixMesh, "Fix non-manifold vertices & edges",
+    m.def("FixMesh", &FixMeshFile, "Fix non-manifold vertices & edges",
         py::arg("path"),
         py::arg("output_path"),
         py::arg("keep_largest_connected_component"),
@@ -38,7 +38,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("refine"),
         py::arg("max_retry"));
 
-    m.def("FixMeshWithLabel", &FixMeshWithLabel, "Fix non-manifold vertices & edges and output manipulated vertex label file.",
+    m.def("FixMeshWithLabel", &FixMeshFileWithLabel, "Fix non-manifold vertices & edges and output manipulated vertex label file.",
         py::arg("path"),
         py::arg("output_path"),
         py::arg("input_label"),

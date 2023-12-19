@@ -14,3 +14,18 @@ class TPolyhedron<CGAL::Polyhedron_items_with_id_3, CGAL::Simple_cartesian<doubl
 template <>
 class TPolyhedron<CGAL::Polyhedron_items_with_id_3, CGAL::Exact_predicates_inexact_constructions_kernel>;
 
+std::vector<int> LoadLabels( std::string path )
+{
+    using namespace nlohmann;
+    std::ifstream label_ifs( path );
+    if(label_ifs.fail())
+    {
+        throw IOError("Cannot open file: " + path);
+    }
+    json data = json::parse( label_ifs );
+    if (data.find( "labels" ) == data.end())
+    {
+        throw IOError("Cannot find key 'labels' in json file " + path);
+    }
+    return data["labels"].get<std::vector<int>>();
+}
