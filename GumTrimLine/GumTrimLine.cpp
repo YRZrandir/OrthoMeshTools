@@ -1,10 +1,9 @@
+#include <algorithm>
 #include <deque>
 #include <iostream>
 #include <filesystem>
 #include <unordered_map>
-#include <CGAL/AABB_tree.h>
-#include <CGAL/AABB_face_graph_triangle_primitive.h>
-#include <CGAL/AABB_traits.h>
+
 #include <CGAL/boost/graph/Face_filtered_graph.h>
 #include <CGAL/boost/graph/copy_face_graph.h>
 #include <CGAL/boost/graph/io.h>
@@ -204,6 +203,62 @@ namespace
         }
     }
 
+    void LabelProcessing(Polyhedron& mesh)
+    {
+        std::unordered_map<hVertex, int> new_label_set;
+        for(auto hv : CGAL::vertices(mesh))
+        {
+            if(hv->_label != 0)
+            {
+                continue;
+            }
+            // Get neighbors
+            std::unordered_set<hVertex> neighbors;
+            std::unordered_set<int> labels;
+            std::queue<hVertex> q;
+            q.push(hv);
+            neighbors.insert(hv);
+            labels.insert(hv->_label);
+            while(!q.empty())
+            {
+                hVertex curr = q.front();
+                q.pop();
+                for(auto nei : CGAL::vertices_around_target(curr, mesh))
+                {
+                    if(neighbors.count(nei) == 0 && CGAL::squared_distance(nei->point(), hv->point()) < 0.5 * 0.5)
+                    {
+                        neighbors.insert(nei);
+                        labels.insert(nei->_label);
+                        q.push(nei);
+                    }
+                }
+            }
+            if(labels.size() >= 3)
+            {
+                double nearest_dist = std::numeric_limits<double>::max();
+                hVertex nearest_hv = nullptr;
+                for(auto nei : neighbors)
+                {
+                    if(nei->_label == hv->_label)
+                    {
+                        continue;
+                    }
+                    double d = CGAL::squared_distance(nei->point(), hv->point());
+                    if(d < nearest_dist)
+                    {
+                        nearest_dist = d;
+                        nearest_hv = nei;
+                    }
+                }
+                new_label_set.insert({hv, nearest_hv->_label});
+            }
+        }
+    
+        for(auto [hv, label] : new_label_set)
+        {
+            hv->_label = label;
+        }
+    }
 }
 
 bool GumTrimLine(std::string input_file, std::string label_file, std::string output_file, int smooth)
@@ -224,14 +279,14 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     }
     //CloseHoles(mesh);
     CGAL::set_halfedgeds_items_id(mesh);
-    printf("Load mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());
+    printf("Load ortho scan mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());
     mesh.LoadLabels(label_file);
+    LabelProcessing(mesh);
     mesh.UpdateFaceLabels2();
-    printf("Loaded labels.\n");
+    //mesh.WriteOBJ("processed_mesh" + std::to_string(mesh.size_of_facets()) + ".obj");
 
     using SubMesh = std::vector<hFacet>;
     std::vector<SubMesh> components;
-
     for (auto hf : CGAL::faces(mesh))
     {
         if (!hf->_processed && hf->_label != 0)
@@ -239,12 +294,11 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
             components.emplace_back(FacialConnectedComponents(hf, mesh));
         }
     }
-
     if (components.empty())
     {
         throw AlgError("Cannot find gum part");
     }
-    printf("Found %zd gum part by label\n", components.size());
+    printf("Divided ortho mesh into %zd submesh by label.\n", components.size());
 
     std::sort(components.begin(), components.end(),
         [](auto &lh, auto &rh) 
@@ -314,11 +368,12 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         {
             throw AlgError("Invalid part selection!");
         }
-        Polyhedron gum_mesh;
+        /* Extract sub mesh */
+        Polyhedron part_mesh;
         std::vector<std::pair<hVertex, hVertex>> vtx_map;
         std::vector<std::pair<hFacet, hFacet>> facet_map;
-        CGAL::copy_face_graph(filtered_graph, gum_mesh,
-         CGAL::parameters::vertex_to_vertex_output_iterator(std::back_inserter(vtx_map)).face_to_face_output_iterator(std::back_inserter(facet_map)));
+        CGAL::copy_face_graph(filtered_graph, part_mesh,
+        CGAL::parameters::vertex_to_vertex_output_iterator(std::back_inserter(vtx_map)).face_to_face_output_iterator(std::back_inserter(facet_map)));
         for(auto& [source, target] : vtx_map)
         {
             target->_label = source->_label;
@@ -327,85 +382,92 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         {
             target->_label = source->_label;
         }
-        auto [gum_mesh_vertices, gum_mesh_faces] = gum_mesh.ToVerticesTriangles();
-        FixMeshWithLabel(gum_mesh_vertices, gum_mesh_faces, gum_mesh.WriteLabels(), gum_mesh, false, 0, false, true, 100, 200, false, 10);
-        if (gum_mesh.is_empty() || !gum_mesh.is_valid())
-        {
-            throw AlgError("Cannot find gum part");
-        }
-        gum_mesh.UpdateFaceLabels2();
-        printf("Mesh valid. F = %zd\n", gum_mesh.size_of_facets());
-
-        std::vector<hHalfedge> border_halfedges;
-        CGAL::Polygon_mesh_processing::extract_boundary_cycles(gum_mesh, std::back_inserter(border_halfedges));
-        if (border_halfedges.empty())
+        
+        /* Fix non-manifold */
+        auto [gum_mesh_vertices, gum_mesh_faces] = part_mesh.ToVerticesTriangles();
+        FixMeshWithLabel(gum_mesh_vertices, gum_mesh_faces, part_mesh.WriteLabels(), part_mesh, false, 0, false, true, 100, 200, false, 10);
+        if (part_mesh.is_empty() || !part_mesh.is_valid())
         {
             throw AlgError("Cannot find trim line");
         }
-        printf("Found %zd borders\n", border_halfedges.size());
-
+        part_mesh.UpdateFaceLabels2();
+        printf("SubMesh valid. F = %zd\n", part_mesh.size_of_facets());
+        //part_mesh.WriteOBJ("part_mesh" + std::to_string(part_mesh.size_of_vertices()) + ".obj");
+        /* Extract borders */
+        std::vector<hHalfedge> border_halfedges;
+        CGAL::Polygon_mesh_processing::extract_boundary_cycles(part_mesh, std::back_inserter(border_halfedges));
         std::vector<std::vector<hHalfedge>> border_cycles;
-        for (hHalfedge hh : border_halfedges)
-        {
-            border_cycles.emplace_back(GetBorderCycle(hh, gum_mesh));
-        }
-        printf("Found %zd possible trim line. ", border_cycles.size());
+        std::transform(border_halfedges.begin(), border_halfedges.end(), std::back_inserter(border_cycles), [&part_mesh](auto& hf) { return GetBorderCycle(hf, part_mesh);});
         border_cycles.erase(std::remove_if(border_cycles.begin(), border_cycles.end(), [](std::vector<hHalfedge> &edges)
                                            { return edges.size() <= 10; }), border_cycles.end());
-        printf("Use %zd of them after removing small ones.\n", border_cycles.size());
         if (border_cycles.empty())
         {
-            throw AlgError("No valid trim line after filtering.");
+            throw AlgError("No valid trim line.");
         }
-
-        for (std::vector<hHalfedge> &trimline : border_cycles)
+        std::vector<hHalfedge> trimline = *std::max_element(border_cycles.begin(), border_cycles.end(), [](auto& lh, auto& rh) { return lh.size() < rh.size();});
+        internal::Curve<Polyhedron::Traits> curve;
+        for (auto hh : trimline)
         {
-            internal::Curve<Polyhedron::Traits> curve;
-            for (auto hh : trimline)
-            {
-                curve.AddPoint(hh->vertex()->point(), hh->opposite()->facet()->_label);
-            }
-
-            for (size_t iteration = 0; iteration < smooth; iteration++)
-            {
-                std::vector<Point_3> new_points = curve.GetPoints();
-                for (size_t i = 0; i < new_points.size(); i++)
-                {
-                    size_t prev = i == 0 ? new_points.size() - 1 : i - 1;
-                    size_t next = i == new_points.size() - 1 ? 0 : i + 1;
-                    new_points[i] = CGAL::midpoint(curve[prev], curve[next]);
-                    new_points[i] = aabb_tree.closest_point(new_points[i]);
-                }
-                for(size_t i = 0; i < curve.size(); i++)
-                {
-                    curve[i] = new_points[i];
-                }
-            }
-            curve.UpdateData();
-            //curve.WriteOBJ("curve" + std::to_string(curve.size()) + ".obj");
-            trim_points.push_back(curve);
+            curve.AddPoint(hh->vertex()->point(), hh->opposite()->facet()->_label);
         }
+
+        for (size_t iteration = 0; iteration < smooth; iteration++)
+        {
+            std::vector<Point_3> new_points = curve.GetPoints();
+            for (size_t i = 0; i < new_points.size(); i++)
+            {
+                size_t prev = i == 0 ? new_points.size() - 1 : i - 1;
+                size_t next = i == new_points.size() - 1 ? 0 : i + 1;
+                new_points[i] = new_points[i] + 0.5 * (CGAL::midpoint(curve[prev], curve[next]) - curve[i]);
+                new_points[i] = aabb_tree.closest_point(new_points[i]);
+            }
+            for(size_t i = 0; i < curve.size(); i++)
+            {
+                curve[i] = new_points[i];
+            }
+        }
+        curve.UpdateData();
+        //curve.WriteOBJ("curve" + std::to_string(curve.size()) + ".obj");
+        trim_points.push_back(curve);
+        printf("Added curve of %zd points.\n", curve.size());
     }
 
+    auto& final_curve = trim_points[0];
     if (trim_points.size() >= 2)
     {
         for(int i = 1; i < trim_points.size(); i++)
         {
-            trim_points[0] = Merge(trim_points[0], trim_points[i]);
+            trim_points[0] = Merge(trim_points[0], trim_points[i], aabb_tree);
+        }
+        for(size_t i = 0; i < final_curve.size(); i++)
+        {
+            final_curve[i] = aabb_tree.closest_point(final_curve[i]);
         }
     }
 
-    for(size_t i = 0; i < trim_points[0].size(); i++)
+    for (size_t iteration = 0; iteration < 1; iteration++)
     {
-        trim_points[0][i] = aabb_tree.closest_point(trim_points[0][i]);
+        std::vector<Point_3> new_points = final_curve.GetPoints();
+        for (size_t i = 0; i < new_points.size(); i++)
+        {
+            size_t prev = i == 0 ? new_points.size() - 1 : i - 1;
+            size_t next = i == new_points.size() - 1 ? 0 : i + 1;
+            new_points[i] = new_points[i] + 0.5 * (CGAL::midpoint(final_curve[prev], final_curve[next]) - final_curve[i]);
+            //new_points[i] = aabb_tree.closest_point(new_points[i]);
+        }
+        for(size_t i = 0; i < final_curve.size(); i++)
+        {
+            final_curve[i] = new_points[i];
+        }
     }
-
     return WritePoints(trim_points[0].GetPoints(), output_file);
 }
 
 #ifndef FOUND_PYBIND11
+#include <chrono>
 int main(int argc, char *argv[])
 {
+    auto start_time = std::chrono::high_resolution_clock::now();
     std::filesystem::current_path(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine)");
     std::string input_file = "0.obj";
     std::string label_file = "0.json";
@@ -447,15 +509,15 @@ int main(int argc, char *argv[])
     }
     try
     {
-        GumTrimLine("0.obj", "0.json", "0gumline.obj", smooth);
-        GumTrimLine("1.obj", "1.json", "1gumline.obj", smooth);
-        GumTrimLine("2.obj", "2.json", "2gumline.obj", smooth);
-        GumTrimLine("3.obj", "3.json", "3gumline.obj", smooth);
-        GumTrimLine("4.ply", "4.json", "4gumline.obj", smooth);
-        GumTrimLine("5.ply", "5.json", "5gumline.obj", smooth);
-        GumTrimLine("6.obj", "6.json", "6gumline.obj", smooth);
+        // GumTrimLine("0.obj", "0.json", "0gumline.obj", smooth);
+        // GumTrimLine("1.obj", "1.json", "1gumline.obj", smooth);
+        // GumTrimLine("2.obj", "2.json", "2gumline.obj", smooth);
+        // GumTrimLine("3.obj", "3.json", "3gumline.obj", smooth);
+        // GumTrimLine("4.ply", "4.json", "4gumline.obj", smooth);
+        // GumTrimLine("5.ply", "5.json", "5gumline.obj", smooth);
+        // GumTrimLine("6.obj", "6.json", "6gumline.obj", smooth);
         GumTrimLine("7.obj", "7.json", "7gumline.obj", smooth);
-
+        std::cout << "Time = " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time) << std::endl;
     }
     catch(const std::exception& e)
     {
