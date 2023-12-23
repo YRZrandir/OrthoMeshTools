@@ -468,10 +468,9 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
 int main(int argc, char *argv[])
 {
     auto start_time = std::chrono::high_resolution_clock::now();
-    std::filesystem::current_path(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine)");
-    std::string input_file = "0.obj";
-    std::string label_file = "0.json";
-    std::string output_file = "0gumline.obj";
+    std::string input_file = "";
+    std::string label_file = "";
+    std::string output_file = "";
     int smooth = 20;
     for (int i = 1; i < argc; i++)
     {
@@ -509,14 +508,7 @@ int main(int argc, char *argv[])
     }
     try
     {
-        // GumTrimLine("0.obj", "0.json", "0gumline.obj", smooth);
-        // GumTrimLine("1.obj", "1.json", "1gumline.obj", smooth);
-        // GumTrimLine("2.obj", "2.json", "2gumline.obj", smooth);
-        // GumTrimLine("3.obj", "3.json", "3gumline.obj", smooth);
-        // GumTrimLine("4.ply", "4.json", "4gumline.obj", smooth);
-        // GumTrimLine("5.ply", "5.json", "5gumline.obj", smooth);
-        // GumTrimLine("6.obj", "6.json", "6gumline.obj", smooth);
-        GumTrimLine("7.obj", "7.json", "7gumline.obj", smooth);
+        GumTrimLine(input_file, label_file, output_file, smooth);
         std::cout << "Time = " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time) << std::endl;
     }
     catch(const std::exception& e)
