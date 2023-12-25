@@ -266,7 +266,23 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     Polyhedron mesh;
     if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
     {
-        throw IOError("Cannot read from file " + input_file);
+        try
+        {
+            printf("possible invalid mesh, try fixing...\n");
+            std::vector<typename Polyhedron::Traits::Point_3> vertices;
+            std::vector<TTriangle<size_t>> faces;
+            LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            std::vector<int> labels = LoadLabels(label_file);
+            FixMeshWithLabel(vertices, faces, labels, mesh, false, 0, false, true, 0, 0, false, 10);
+        }
+        catch(const std::exception&)
+        {
+            throw IOError("Cannot read mesh file or mesh invalid: " + input_file);
+        }
+    }
+    else
+    {
+        mesh.LoadLabels(label_file);
     }
     if (!mesh.is_valid(false))
     {
@@ -280,11 +296,9 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
     //CloseHoles(mesh);
     CGAL::set_halfedgeds_items_id(mesh);
     printf("Load ortho scan mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());
-    mesh.LoadLabels(label_file);
     LabelProcessing(mesh);
     mesh.UpdateFaceLabels2();
     //mesh.WriteOBJ("processed_mesh" + std::to_string(mesh.size_of_facets()) + ".obj");
-
     using SubMesh = std::vector<hFacet>;
     std::vector<SubMesh> components;
     for (auto hf : CGAL::faces(mesh))
@@ -385,7 +399,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
         
         /* Fix non-manifold */
         auto [gum_mesh_vertices, gum_mesh_faces] = part_mesh.ToVerticesTriangles();
-        FixMeshWithLabel(gum_mesh_vertices, gum_mesh_faces, part_mesh.WriteLabels(), part_mesh, false, 0, false, true, 100, 200, false, 10);
+        FixMeshWithLabel(gum_mesh_vertices, gum_mesh_faces, part_mesh.WriteLabels(), part_mesh, false, 0, false, true, 0, 0, false, 10);
         if (part_mesh.is_empty() || !part_mesh.is_valid())
         {
             throw AlgError("Cannot find trim line");
