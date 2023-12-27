@@ -1,0 +1,9 @@
+{
+  "dependencies": [
+    "assimp",
+    "cgal",
+    "nlohmann-json",
+    "pybind11",
+    "pthread"
+  ]
+}
