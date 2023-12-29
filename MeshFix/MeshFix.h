@@ -374,7 +374,7 @@ void FixMesh(
 }
 
 template <typename Polyhedron>
-bool FixMeshWithLabel(
+void FixMeshWithLabel(
     const std::vector<typename Polyhedron::Traits::Point_3> &input_vertices,
     const std::vector<TTriangle<typename Polyhedron::Vertex::size_type>> &input_faces,
     const std::vector<int> &input_labels,
@@ -437,7 +437,6 @@ bool FixMeshWithLabel(
     }
 
     output_mesh = m;
-    return true;
 }
 
 

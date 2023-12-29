@@ -7,13 +7,19 @@
 #include <vector>
 #include <iterator>
 #include "../Polyhedron.h"
+#include <CGAL/AABB_tree.h>
+#include <CGAL/AABB_face_graph_triangle_primitive.h>
+#include <CGAL/AABB_traits.h>
 #include <CGAL/linear_least_squares_fitting_3.h>
+#include <CGAL/Weighted_point_3.h>
+#include "tinycolormap.hpp"
 
 namespace internal
 {
+
     template <typename Curve>
     class CurveIterator;
-    // A closed curve
+
     template <typename Kernel>
     class Curve
     {
@@ -126,6 +132,43 @@ namespace internal
         std::vector<Point_3> GetPoints() const { return _points; }
         Point_3 GetCentroidOfLabel(int label) const { return _centroids.at(label); }
         Vector_3 GetUpwardOfLabel(int label) const { return _upwards.at(label); }
+        Curve<Kernel> GetSubCurve(size_t first, size_t last) const
+        {
+            if(first >= _points.size() || last >= _points.size())
+            {
+                throw std::range_error("out of curve range");
+            }
+            Curve<Kernel> subcurve;
+            size_t idx = first;
+            subcurve.AddPoint(_points[idx], _labels[idx]);
+            do
+            {
+                idx++;
+                if(idx == _points.size())
+                {
+                    idx = 0;
+                }
+                subcurve.AddPoint(_points[idx], _labels[idx]);
+            } while (idx != last);
+            return subcurve;
+        }
+        Curve<Kernel> GetSubCurve(const const_iterator& first, const const_iterator& last) const
+        {
+            return GetSubCurve(first.Idx(), last.Idx());
+        }
+        Curve<Kernel> GetSubCurve(const iterator& first, const iterator& last) const
+        {
+            return GetSubCurve(first.Idx(), last.Idx());
+        }
+        void InsertAt(const Curve<Kernel>& curve, size_t pos)
+        {
+            if(pos > _points.size())
+            {
+                throw std::range_error("out of curve range");
+            }
+            _points.insert(_points.begin() + pos, curve._points.begin(), curve._points.end());
+            _labels.insert(_labels.begin() + pos, curve._labels.begin(), curve._labels.end());
+        }
         std::vector<Point_3>::iterator begin() { return _points.begin(); }
         std::vector<Point_3>::iterator end() { return _points.end(); }
         std::vector<Point_3>::const_iterator begin() const { return _points.begin(); }
@@ -317,8 +360,8 @@ namespace internal
         size_t _pos;
     };
 
-    template <typename Kernel>
-    Curve<Kernel> Merge(const Curve<Kernel> &curve0, const Curve<Kernel> &curve1)
+    template <typename Kernel, typename AABBTree>
+    Curve<Kernel> Merge(const Curve<Kernel> &curve0, const Curve<Kernel> &curve1, const AABBTree& guide_mesh )
     {
         // if(curve0.MaxLabel() > curve1.MinLabel())
         // {
@@ -413,24 +456,24 @@ namespace internal
         // TODO: Change following code to using iterators.
         double w0 = 1.0f;
         double w1 = 0.0f;
-        std::pair<size_t, size_t> end_pair;
-        std::pair<size_t, size_t> start_pair;
+
+        auto end_it = closest_its;
+        auto start_it = closest_its;
         double max_score = -999.0;
         for (size_t i = 0; i < curve0.size(); i++)
         {
-            size_t idx = (closest_pair.first + i) % curve0.size();
-            if(curve0.Label(idx) != curve0.Label(closest_pair.first))
+            if(end_it.first.Label() != closest_its.first.Label())
             {
                 break;
             }
-            typename Kernel::Vector_3 vec = curve0[(idx + 1) % curve0.size()] - curve0[idx];
-            double distance_score = std::sqrt(CGAL::squared_distance(connecting_plane.projection(curve0[idx]), curve0[idx]));
+            typename Kernel::Vector_3 vec = end_it.first.Segment().to_vector();
+            double distance_score = std::sqrt(CGAL::squared_distance(connecting_plane.projection(end_it.first.Point()), end_it.first.Point()));
             double direction_score = CGAL::approximate_angle(line_dir, vec);
             double score = w0 * distance_score + w1 * distance_score;
             if(score >= max_score)
             {
                 max_score = score;
-                end_pair.first = idx;
+                end_it.first++;
             }
             else
             {
@@ -440,19 +483,18 @@ namespace internal
         max_score = -999.0;
         for (size_t i = 0; i < curve1.size(); i++)
         {
-            size_t idx = (closest_pair.second + i) % curve1.size();
-            if(curve1.Label(idx) != curve1.Label(closest_pair.second))
+            if(end_it.second.Label() != closest_its.second.Label())
             {
                 break;
             }
-            typename Kernel::Vector_3 vec = curve1[(idx + 1) % curve1.size()] - curve1[idx];
-            double distance_score = std::sqrt(CGAL::squared_distance(connecting_plane.projection(curve1[idx]), curve1[idx]));
+            typename Kernel::Vector_3 vec = end_it.second.Segment().to_vector();
+            double distance_score = std::sqrt(CGAL::squared_distance(connecting_plane.projection(end_it.second.Point()), end_it.second.Point()));
             double direction_score = 180.0 - CGAL::approximate_angle(line_dir, vec);
             double score = w0 * distance_score + w1 * distance_score;
             if(score >= max_score)
             {
                 max_score = score;
-                end_pair.second = idx;
+                end_it.second++;
             }
             else
             {
@@ -460,28 +502,20 @@ namespace internal
             }
         }
         max_score = -999.0;
-        for (size_t i = 0, idx = closest_pair.first; i < curve0.size(); i++)
+        for (size_t i = 0; i < curve0.size(); i++)
         {
-            if(idx == 0)
-            {
-                idx = curve0.size() - 1;
-            }
-            else
-            {
-                idx--;
-            }
-            if(curve0.Label(idx) != curve0.Label(closest_pair.first))
+            if(start_it.first.Label() != closest_its.first.Label())
             {
                 break;
             }
-            typename Kernel::Vector_3 vec = curve0[idx] - curve0[(idx + 1) % curve0.size()];
-            double distance_score = std::sqrt(CGAL::squared_distance(connecting_plane.projection(curve0[idx]), curve0[idx]));
+            typename Kernel::Vector_3 vec = start_it.first.Segment().to_vector();
+            double distance_score = std::sqrt(CGAL::squared_distance(connecting_plane.projection(start_it.first.Point()), start_it.first.Point()));
             double direction_score = CGAL::approximate_angle(line_dir, vec);
             double score = w0 * distance_score + w1 * distance_score;
             if(score >= max_score)
             {
                 max_score = score;
-                start_pair.first = idx;
+                start_it.first--;
             }
             else
             {
@@ -489,28 +523,20 @@ namespace internal
             }
         }
         max_score = -999.0;
-        for (size_t i = 0, idx = closest_pair.second; i < curve1.size(); i++)
+        for (size_t i = 0; i < curve1.size(); i++)
         {
-            if(idx == 0)
-            {
-                idx = curve1.size() - 1;
-            }
-            else
-            {
-                idx--;
-            }
-            if(curve1.Label(idx) != curve1.Label(closest_pair.second))
+            if(start_it.second.Label() != closest_its.second.Label())
             {
                 break;
             }
-            typename Kernel::Vector_3 vec = curve1[idx] - curve1[(idx + 1) % curve1.size()];
+            typename Kernel::Vector_3 vec = start_it.second.Segment().to_vector();
             double direction_score = 180.0 - CGAL::approximate_angle(line_dir, vec);
-            double distance_score = std::sqrt(CGAL::squared_distance(connecting_plane.projection(curve1[idx]), curve1[idx]));
+            double distance_score = std::sqrt(CGAL::squared_distance(connecting_plane.projection(start_it.second.Point()), start_it.second.Point()));
             double score = w0 * distance_score + w1 * distance_score;
             if(score >= max_score)
             {
                 max_score = score;
-                start_pair.second = idx;
+                start_it.second--;
             }
             else
             {
@@ -593,86 +619,113 @@ namespace internal
         // }
         // ofs.close();
         
-        std::vector<typename Kernel::Point_3> result;
-        Curve<Kernel> result_curve;
-        size_t idx = end_pair.first;
-        result_curve.AddPoint(curve0[idx], curve0.Label(idx));
-        while(idx != start_pair.first)
+        Curve<Kernel> midcurve1;
         {
-            idx++;
-            if(idx == curve0.size())
+            double error = 0.0;
+            int max_try = std::min(closest_its.first - start_it.first, end_it.second - closest_its.second);
+            while(max_try > 0)
             {
-                idx = 0;
-            }
-            result_curve.AddPoint(curve0[idx], curve0.Label(idx));
-        }
-        {
-            typename Kernel::Vector_3 pos0 = curve0[start_pair.first] - CGAL::ORIGIN;
-            typename Kernel::Vector_3 pos1 = curve1[end_pair.second] - CGAL::ORIGIN;
-            typename Kernel::Vector_3 mid = (pos0 + pos1) * 0.5;
-            mid = (connecting_plane.projection(CGAL::ORIGIN + mid) - CGAL::ORIGIN + mid) * 0.5;
-            for(int i = 1; i < 40; i++)
-            {
-                double t = (double)i / 40.0;
-                typename Kernel::Vector_3 p = (1.0 - t) * (1.0 - t) * pos0 + 2.0 * t * (1.0 - t) * mid + t * t * pos1;
-                if(i < 20)
+                typename Kernel::Point_3 pos0 = start_it.first.Point();
+                typename Kernel::Point_3 pos1 = end_it.second.Point();
+                typename Kernel::Point_3 mid = CGAL::midpoint(pos0, pos1);
+                mid = CGAL::midpoint(connecting_plane.projection(mid), mid);
+                for(int i = 1; i < 40; i++)
                 {
-                    result_curve.AddPoint(CGAL::ORIGIN + p, curve0.Label(start_pair.first));
+                    double t = (double)i / 40.0;
+                    typename Kernel::Vector_3 p = (1.0 - t) * (1.0 - t) * (pos0 - CGAL::ORIGIN) + 2.0 * t * (1.0 - t) * (mid - CGAL::ORIGIN) + t * t * (pos1 - CGAL::ORIGIN);
+                    midcurve1.AddPoint(CGAL::ORIGIN + p, start_it.first.Label());
+                }
+                error = 0.0;
+                for(size_t i = 0; i < midcurve1.size(); i++)
+                {
+                    if(guide_mesh.closest_point_and_primitive(midcurve1[i]).second->_label != 0)
+                    {
+                        error += 1.0;
+                    }
+                }
+                error /= midcurve1.size();
+                if(error < 0.3)
+                {
+                    break;
                 }
                 else
                 {
-                    result_curve.AddPoint(CGAL::ORIGIN + p, curve0.Label(start_pair.first));
+                    printf("Merge error: %f\n", error);
+                    start_it.first++;
+                    end_it.second--;
+                    max_try--;
+                    midcurve1 = Curve<Kernel>();
                 }
             }
+            
         }
-        idx = end_pair.second;
-        result_curve.AddPoint(curve1[idx], curve1.Label(idx));
-        while(idx != start_pair.second)
+        Curve<Kernel> midcurve2;
         {
-            idx++;
-            if(idx == curve1.size())
+            double error = 0.0;
+            int max_try = std::min(closest_its.second - start_it.second, end_it.first - closest_its.first);
+            while(max_try > 0)
             {
-                idx = 0;
-            }
-            result_curve.AddPoint(curve1[idx], curve1.Label(idx));
-        }
-        {
-            typename Kernel::Vector_3 pos0 = curve1[start_pair.second] - CGAL::ORIGIN;
-            typename Kernel::Vector_3 pos1 = curve0[end_pair.first] - CGAL::ORIGIN;
-            typename Kernel::Vector_3 mid = (pos0 + pos1) * 0.5;
-            mid = (connecting_plane.projection(CGAL::ORIGIN + mid) - CGAL::ORIGIN + mid) * 0.5;
-            for(int i = 1; i < 40; i++)
-            {
-                double t = (double)i / 40.0;
-                typename Kernel::Vector_3 p = (1.0 - t) * (1.0 - t) * pos0 + 2.0 * t * (1.0 - t) * mid + t * t * pos1;
-                if(i < 20)
+                typename Kernel::Point_3 pos0 = start_it.second.Point();
+                typename Kernel::Point_3 pos1 = end_it.first.Point();
+                typename Kernel::Point_3 mid = CGAL::midpoint(pos0, pos1);
+                mid = CGAL::midpoint(connecting_plane.projection(mid), mid);
+                for(int i = 1; i < 40; i++)
                 {
-                    result_curve.AddPoint(CGAL::ORIGIN + p, curve0.Label(end_pair.first));
+                    double t = (double)i / 40.0;
+                    typename Kernel::Vector_3 p = (1.0 - t) * (1.0 - t) * (pos0 - CGAL::ORIGIN) + 2.0 * t * (1.0 - t) * (mid - CGAL::ORIGIN) + t * t * (pos1 - CGAL::ORIGIN);
+                    midcurve2.AddPoint(CGAL::ORIGIN + p, end_it.first.Label());
+                }
+                error = 0.0;
+                for(size_t i = 0; i < midcurve2.size(); i++)
+                {
+                    if(guide_mesh.closest_point_and_primitive(midcurve2[i]).second->_label != 0)
+                    {
+                        error += 1.0;
+                    }
+                }
+                error /= midcurve2.size();
+                if(error < 0.3)
+                {
+                    break;
                 }
                 else
                 {
-                    result_curve.AddPoint(CGAL::ORIGIN + p, curve0.Label(end_pair.first));
+                    printf("Merge error: %f\n", error);
+                    start_it.second++;
+                    end_it.first--;
+                    max_try--;
+                    midcurve2 = Curve<Kernel>();
                 }
             }
         }
+        Curve<Kernel> subcurve1 = curve0.GetSubCurve(end_it.first, start_it.first);
+        Curve<Kernel> subcurve2 = curve1.GetSubCurve(end_it.second, start_it.second);
+        Curve<Kernel> result_curve = subcurve1;
+        result_curve.InsertAt(midcurve1, result_curve.size());
+        result_curve.InsertAt(subcurve2, result_curve.size());
+        result_curve.InsertAt(midcurve2, result_curve.size());
 
-        // std::ofstream ofs("./merge.obj");
-        // static const std::array<std::array<float, 3>, 10> COLORS = {
-        //     std::array<float, 3>{142.0f / 255, 207.0f / 255, 201.0f / 255},
-        //     std::array<float, 3>{255.0f / 255, 190.0f / 255, 122.0f / 255},
-        //     std::array<float, 3>{250.0f / 255, 127.0f / 255, 111.0f / 255},
-        //     std::array<float, 3>{130.0f / 255, 176.0f / 255, 210.0f / 255},
-        //     std::array<float, 3>{190.0f / 255, 184.0f / 255, 220.0f / 255},
-        //     std::array<float, 3>{40.0f / 255, 120.0f / 255, 181.0f / 255},
-        //     std::array<float, 3>{248.0f / 255, 172.0f / 255, 140.0f / 255},
-        //     std::array<float, 3>{255.0f / 255, 136.0f / 255, 132.0f / 255},
-        //     std::array<float, 3>{84.0f / 255, 179.0f / 255, 69.0f / 255},
-        //     std::array<float, 3>{137.0f / 255, 131.0f / 255, 191.0f / 255}
-        // };
+        //std::ofstream ofs("./merge.obj");
+        static const std::array<std::array<float, 3>, 10> COLORS = {
+            std::array<float, 3>{142.0f / 255, 207.0f / 255, 201.0f / 255},
+            std::array<float, 3>{255.0f / 255, 190.0f / 255, 122.0f / 255},
+            std::array<float, 3>{250.0f / 255, 127.0f / 255, 111.0f / 255},
+            std::array<float, 3>{130.0f / 255, 176.0f / 255, 210.0f / 255},
+            std::array<float, 3>{190.0f / 255, 184.0f / 255, 220.0f / 255},
+            std::array<float, 3>{40.0f / 255, 120.0f / 255, 181.0f / 255},
+            std::array<float, 3>{248.0f / 255, 172.0f / 255, 140.0f / 255},
+            std::array<float, 3>{255.0f / 255, 136.0f / 255, 132.0f / 255},
+            std::array<float, 3>{84.0f / 255, 179.0f / 255, 69.0f / 255},
+            std::array<float, 3>{137.0f / 255, 131.0f / 255, 191.0f / 255}
+        };
         // for (size_t i = 0; i < result_curve.size(); i++)
         // {
-
-        //     std::array<float, 3> c = COLORS[result_curve.Label(i) % COLORS.size()];
+        //     //std::array<float, 3> c = COLORS[result_curve.Label(i) % COLORS.size()];
+        //     auto p0 = i == 0 ? result_curve[result_curve.size() - 1] : result_curve[i - 1];
+        //     auto p1 = result_curve[i];
+        //     auto p2 = result_curve[(i + 1) % result_curve.size()];
+        //     double dx = std::sqrt(CGAL::squared_distance(CGAL::midpoint(p0, p2), p1));
+        //     auto c = tinycolormap::GetColor(dx * 100);
         //     ofs << "v " << result_curve[i].x() << ' ' << result_curve[i].y() << ' ' << result_curve[i].z() << ' ' << c[0] << ' ' << c[1] << ' ' << c[2] << '\n';
         // }
         result_curve.UpdateData();

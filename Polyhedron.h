@@ -412,9 +412,11 @@ public:
             throw MeshError("Number of labels != number of vertices");
         }
         
+        size_t id = 0;
         for(auto hv = this->vertices_begin(); hv != this->vertices_end(); hv++)
         {
-            hv->_label = labels[hv->id()];
+            hv->_label = labels[id];
+            id++;
             if(hv->_label == 100 || hv->_label < 10)
                 hv->_label = 0;
         }
