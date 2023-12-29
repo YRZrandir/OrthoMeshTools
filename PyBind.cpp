@@ -1,16 +1,16 @@
 #ifdef FOUND_PYBIND11
 #include <pybind11/pybind11.h>
-#include "ColorMeshByLabel/ColorMeshByLabel.h"
+// #include "ColorMeshByLabel/ColorMeshByLabel.h"
 #include "GumTrimLine/GumTrimLine.h"
-#include "HoleMerge/HoleMerge.h"
-#include "MeshFix/MeshFix.h"
-#include "ReSegment/ReSegment.h"
-#include "SegClean/SegClean.h"
-#include "Polyhedron.h"
+// #include "HoleMerge/HoleMerge.h"
+// #include "MeshFix/MeshFix.h"
+// #include "ReSegment/ReSegment.h"
+// #include "SegClean/SegClean.h"
+// #include "Polyhedron.h"
 
 namespace py = pybind11;
 
-PYBIND11_MODULE(OrthoMeshTools, m)
+PYBIND11_MODULE(gumTrimLine, m)
 {
     m.doc() = "A set of tools for ortho scan meshes.";
 
@@ -66,7 +66,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
     //     py::arg("output_mesh"),
     //     py::arg("threshold"));
 
-    m.def("GumTrimLine", &GumTrimLine, "Get gum trim line",
+    m.def("run", &GumTrimLine, "Get gum trim line",
         py::arg("input_mesh"),
         py::arg("input_labels"),
         py::arg("output_file"),
