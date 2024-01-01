@@ -474,7 +474,8 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string out
             final_curve[i] = new_points[i];
         }
     }
-    return WritePoints(trim_points[0].GetPoints(), output_file);
+    final_curve.FixShape(31);
+    return WritePoints(final_curve.GetPoints(), output_file);
 }
 
 #ifndef FOUND_PYBIND11

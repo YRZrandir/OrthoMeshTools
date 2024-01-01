@@ -232,7 +232,61 @@ namespace internal
         {
             return CurveIterator<const Curve<Kernel>>(this, pos);
         }
-        
+        void FixShape(int label)
+        {
+            if(_points.size() <= 2)
+            {
+                return;
+            }
+            std::vector<std::vector<iterator>> segs;
+            iterator start_pos = CreateIterator(0);
+            while(start_pos.Label() != label)
+            {
+                start_pos++;
+            }
+            while(start_pos.Label() == label)
+            {
+                start_pos--;
+            }
+            start_pos++;
+            if(start_pos.Label() == label)
+            {
+                segs.emplace_back();
+            }
+            else
+            {
+                return;
+            }
+            iterator end_pos = start_pos;
+            iterator it = start_pos;
+            do
+            {
+                if(it.Label() == label)
+                {
+                    segs.back().push_back(it);
+                }
+                else
+                {
+                    if(!segs.back().empty())
+                    {
+                        segs.emplace_back();
+                    }
+                }
+                it++;
+            }while(it != end_pos);
+            if(segs.back().empty())
+            {
+                segs.pop_back();
+            }
+            std::ofstream ofs("./fixshape.obj");
+            for(auto& seg : segs)
+            {
+                for(auto& it : seg)
+                {
+                    ofs << "v " << it.Point().x() << ' ' << it.Point().y() << ' ' << it.Point().z() << '\n';
+                }
+            }
+        }
         
     protected:
         std::vector<Point_3> _points;
