@@ -437,7 +437,7 @@ public:
 
     void UpdateFaceLabels2()
     {
-        for(auto hf : CGAL::faces(*this))
+        for(auto hf = this->facets_begin(); hf != this->facets_end(); hf++)
         {
             int l0 = hf->halfedge()->vertex()->_label;
             int l1 = hf->halfedge()->next()->vertex()->_label;
@@ -580,6 +580,40 @@ public:
         ofs.close();
     }
     
+    void WriteTriSoup(const std::string& path)
+    {
+        static const std::array<aiColor4D, 10> COLORS = {
+            aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
+            aiColor4D{255.0f / 255, 190.0f / 255, 122.0f / 255, 1.0},
+            aiColor4D{250.0f / 255, 127.0f / 255, 111.0f / 255, 1.0},
+            aiColor4D{130.0f / 255, 176.0f / 255, 210.0f / 255, 1.0},
+            aiColor4D{190.0f / 255, 184.0f / 255, 220.0f / 255, 1.0},
+            aiColor4D{40.0f / 255, 120.0f / 255, 181.0f / 255, 1.0},
+            aiColor4D{248.0f / 255, 172.0f / 255, 140.0f / 255, 1.0},
+            aiColor4D{255.0f / 255, 136.0f / 255, 132.0f / 255, 1.0},
+            aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
+            aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
+        };
+        CGAL::set_halfedgeds_items_id(*this);
+        std::stringstream ss;
+        int vcount = 0;
+        for (auto hf = this->facets_begin(); hf != this->facets_end(); hf++)
+        {
+            auto v0 = hf->halfedge()->vertex()->point();
+            auto v1 = hf->halfedge()->next()->vertex()->point();
+            auto v2 = hf->halfedge()->prev()->vertex()->point();
+            auto c = COLORS[hf->_label % COLORS.size()];
+            ss << "v " << v0.x() << ' ' << v0.y() << ' ' << v0.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+            ss << "v " << v1.x() << ' ' << v1.y() << ' ' << v1.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+            ss << "v " << v2.x() << ' ' << v2.y() << ' ' << v2.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+            ss << "f " << vcount + 1 << ' ' << vcount + 2 << ' ' << vcount + 3 << '\n';
+            vcount += 3;
+        }
+        std::ofstream ofs(path);
+        ofs << ss.rdbuf();
+        ofs.close();
+    }
+
     virtual void WriteAssimp( const std::string& path) override
     {
         static const std::array<aiColor4D, 10> COLORS = {
