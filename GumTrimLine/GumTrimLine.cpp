@@ -225,7 +225,7 @@ namespace
                 q.pop();
                 for(auto nei : CGAL::vertices_around_target(curr, mesh))
                 {
-                    if(neighbors.count(nei) == 0 && CGAL::squared_distance(nei->point(), hv->point()) < 0.5 * 0.5)
+                    if(neighbors.count(nei) == 0 && CGAL::squared_distance(nei->point(), hv->point()) < 1)
                     {
                         neighbors.insert(nei);
                         labels.insert(nei->_label);
@@ -271,9 +271,17 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
             printf("possible invalid mesh, try fixing...\n");
             std::vector<typename Polyhedron::Traits::Point_3> vertices;
             std::vector<TTriangle<size_t>> faces;
-            LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            if(input_file.ends_with(".obj"))
+            {
+                LoadVFObj<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            }
+            else
+            {
+                // TODO: add custom file loading function for more formats, since assimp cannot keep vertex order sometimes.
+                LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            }
             std::vector<int> labels = LoadLabels(label_file);
-            FixMeshWithLabel(vertices, faces, labels, mesh, false, 0, false, true, 0, 0, false, 10);
+            FixMeshWithLabel(vertices, faces, labels, mesh, false, 0, false, false, 0, 0, false, 10);
         }
         catch(const std::exception&)
         {

@@ -791,6 +791,57 @@ void LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3
 }
 
 template <typename Kernel, typename SizeType>
+void LoadVFObj( const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<TTriangle<SizeType>>& faces )
+{
+    std::ifstream ifs(path);
+    std::string line;
+    vertices.clear();
+    faces.clear();
+    while(std::getline(ifs, line))
+    {
+        std::istringstream ss(line);
+        if(line.starts_with("v "))
+        {
+            typename Kernel::Point_3 p;
+            ss.ignore(std::numeric_limits<std::streamsize>::max(), ' ');
+            double x = 0.0;
+            double y = 0.0;
+            double z = 0.0;
+            ss >> x >> y >> z;
+            vertices.emplace_back(x, y, z);
+        }
+        else if(line.starts_with("f "))
+        {
+            SizeType i0 = 0;
+            SizeType i1 = 0;
+            SizeType i2 = 0;
+            ss.ignore(std::numeric_limits<std::streamsize>::max(),' ');
+            ss >> i0;
+            ss.ignore(std::numeric_limits<std::streamsize>::max(),' ');
+            ss >> i1;
+            ss.ignore(std::numeric_limits<std::streamsize>::max(),' ');
+            ss >> i2;
+            faces.emplace_back(i0 - 1, i1 - 1, i2 - 1);
+        }
+    }
+}
+
+template <typename Kernel, typename SizeType>
+void WriteVFObj( const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<TTriangle<SizeType>>& faces )
+{
+    std::ofstream ofs(path);
+    for(auto& p : vertices)
+    {
+        ofs << "v " << p.x() << ' ' << p.y() << ' ' << p.z() << '\n';
+    }
+    for(auto& f : faces)
+    {
+        ofs << "f " << f[0] << ' ' << f[1] << ' ' << f[2] << '\n';
+    }
+}
+
+
+template <typename Kernel, typename SizeType>
 bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, const std::vector<int>& labels)
 {
      static const std::array<aiColor4D, 10> COLORS = {

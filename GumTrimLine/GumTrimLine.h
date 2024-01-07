@@ -1075,6 +1075,6 @@ namespace internal
 }
 
 
-bool GumTrimLine( std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth );
+bool GumTrimLine( std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth, double fix_factor );
 
 #endif
