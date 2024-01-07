@@ -69,8 +69,10 @@ PYBIND11_MODULE(gumTrimLine, m)
     m.def("run", &GumTrimLine, "Get gum trim line",
         py::arg("input_mesh"),
         py::arg("input_labels"),
+        py::arg("frame_file"),
         py::arg("output_file"),
-        py::arg("smooth"));
+        py::arg("smooth"),
+        py::arg("fix_factor"));
 
     py::register_local_exception<IOError>(m, "IOError");
     py::register_local_exception<MeshError>(m, "MeshError");

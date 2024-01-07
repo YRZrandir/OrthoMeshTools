@@ -437,7 +437,7 @@ public:
 
     void UpdateFaceLabels2()
     {
-        for(auto hf : CGAL::faces(*this))
+        for(auto hf = this->facets_begin(); hf != this->facets_end(); hf++)
         {
             int l0 = hf->halfedge()->vertex()->_label;
             int l1 = hf->halfedge()->next()->vertex()->_label;
@@ -580,6 +580,40 @@ public:
         ofs.close();
     }
     
+    void WriteTriSoup(const std::string& path)
+    {
+        static const std::array<aiColor4D, 10> COLORS = {
+            aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
+            aiColor4D{255.0f / 255, 190.0f / 255, 122.0f / 255, 1.0},
+            aiColor4D{250.0f / 255, 127.0f / 255, 111.0f / 255, 1.0},
+            aiColor4D{130.0f / 255, 176.0f / 255, 210.0f / 255, 1.0},
+            aiColor4D{190.0f / 255, 184.0f / 255, 220.0f / 255, 1.0},
+            aiColor4D{40.0f / 255, 120.0f / 255, 181.0f / 255, 1.0},
+            aiColor4D{248.0f / 255, 172.0f / 255, 140.0f / 255, 1.0},
+            aiColor4D{255.0f / 255, 136.0f / 255, 132.0f / 255, 1.0},
+            aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
+            aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
+        };
+        CGAL::set_halfedgeds_items_id(*this);
+        std::stringstream ss;
+        int vcount = 0;
+        for (auto hf = this->facets_begin(); hf != this->facets_end(); hf++)
+        {
+            auto v0 = hf->halfedge()->vertex()->point();
+            auto v1 = hf->halfedge()->next()->vertex()->point();
+            auto v2 = hf->halfedge()->prev()->vertex()->point();
+            auto c = COLORS[hf->_label % COLORS.size()];
+            ss << "v " << v0.x() << ' ' << v0.y() << ' ' << v0.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+            ss << "v " << v1.x() << ' ' << v1.y() << ' ' << v1.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+            ss << "v " << v2.x() << ' ' << v2.y() << ' ' << v2.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+            ss << "f " << vcount + 1 << ' ' << vcount + 2 << ' ' << vcount + 3 << '\n';
+            vcount += 3;
+        }
+        std::ofstream ofs(path);
+        ofs << ss.rdbuf();
+        ofs.close();
+    }
+
     virtual void WriteAssimp( const std::string& path) override
     {
         static const std::array<aiColor4D, 10> COLORS = {
@@ -755,6 +789,57 @@ void LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3
         faces.emplace_back(f.mIndices[0], f.mIndices[1], f.mIndices[2]);
     }
 }
+
+template <typename Kernel, typename SizeType>
+void LoadVFObj( const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<TTriangle<SizeType>>& faces )
+{
+    std::ifstream ifs(path);
+    std::string line;
+    vertices.clear();
+    faces.clear();
+    while(std::getline(ifs, line))
+    {
+        std::istringstream ss(line);
+        if(line.starts_with("v "))
+        {
+            typename Kernel::Point_3 p;
+            ss.ignore(std::numeric_limits<std::streamsize>::max(), ' ');
+            double x = 0.0;
+            double y = 0.0;
+            double z = 0.0;
+            ss >> x >> y >> z;
+            vertices.emplace_back(x, y, z);
+        }
+        else if(line.starts_with("f "))
+        {
+            SizeType i0 = 0;
+            SizeType i1 = 0;
+            SizeType i2 = 0;
+            ss.ignore(std::numeric_limits<std::streamsize>::max(),' ');
+            ss >> i0;
+            ss.ignore(std::numeric_limits<std::streamsize>::max(),' ');
+            ss >> i1;
+            ss.ignore(std::numeric_limits<std::streamsize>::max(),' ');
+            ss >> i2;
+            faces.emplace_back(i0 - 1, i1 - 1, i2 - 1);
+        }
+    }
+}
+
+template <typename Kernel, typename SizeType>
+void WriteVFObj( const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<TTriangle<SizeType>>& faces )
+{
+    std::ofstream ofs(path);
+    for(auto& p : vertices)
+    {
+        ofs << "v " << p.x() << ' ' << p.y() << ' ' << p.z() << '\n';
+    }
+    for(auto& f : faces)
+    {
+        ofs << "f " << f[0] << ' ' << f[1] << ' ' << f[2] << '\n';
+    }
+}
+
 
 template <typename Kernel, typename SizeType>
 bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, const std::vector<int>& labels)
