@@ -7,6 +7,7 @@
 #include <CGAL/boost/graph/Face_filtered_graph.h>
 #include <CGAL/boost/graph/copy_face_graph.h>
 #include <CGAL/boost/graph/io.h>
+#include <CGAL/bounding_box.h>
 #include <CGAL/linear_least_squares_fitting_3.h>
 #include <CGAL/Polygon_mesh_processing/border.h>
 #include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
@@ -205,6 +206,9 @@ namespace
 
     void LabelProcessing(Polyhedron& mesh)
     {
+        auto aabb = CGAL::bbox_3(mesh.points_begin(), mesh.points_end());
+        double threshold = std::max(aabb.x_span(), std::max(aabb.y_span(), aabb.z_span())) / 100.0;
+        
         std::unordered_map<hVertex, int> new_label_set;
         for(auto hv : CGAL::vertices(mesh))
         {
@@ -212,7 +216,6 @@ namespace
             {
                 continue;
             }
-            // Get neighbors
             std::unordered_set<hVertex> neighbors;
             std::unordered_set<int> labels;
             std::queue<hVertex> q;
@@ -225,7 +228,7 @@ namespace
                 q.pop();
                 for(auto nei : CGAL::vertices_around_target(curr, mesh))
                 {
-                    if(neighbors.count(nei) == 0 && CGAL::squared_distance(nei->point(), hv->point()) < 1)
+                    if(neighbors.count(nei) == 0 && CGAL::squared_distance(nei->point(), hv->point()) < threshold * threshold)
                     {
                         neighbors.insert(nei);
                         labels.insert(nei->_label);
