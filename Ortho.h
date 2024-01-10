@@ -36,6 +36,30 @@ struct Frame
     typename Kernel::Vector_3 front;
     typename Kernel::Vector_3 up;
     typename Kernel::Point_3 pos;
+
+    Frame() = default;
+    Frame(const typename Kernel::Aff_transformation_3& t)
+    {
+        right = typename Kernel::Vector_3(t.m(0, 0), t.m(1, 0), t.m(2, 0));
+        front = typename Kernel::Vector_3(t.m(0, 1), t.m(1, 1), t.m(2, 1));
+        up = typename Kernel::Vector_3(t.m(0, 2), t.m(1, 2), t.m(2, 2));
+        pos = typename Kernel::Point_3(t.m(0, 3), t.m(1, 3), t.m(2, 3));
+    }
+
+    typename Kernel::Aff_transformation_3 WorldToLocal() const
+    {
+        return LocalToWorld().inverse();
+    }
+
+    typename Kernel::Aff_transformation_3 LocalToWorld() const
+    {
+        return typename Kernel::Aff_transformation_3(
+            right.x(), front.x(), up.x(), pos.x(),
+            right.y(), front.y(), up.y(), pos.y(),
+            right.z(), front.z(), up.z(), pos.z(),
+            1.0
+        );
+    }
 };
 
 template <typename Kernel>
@@ -68,6 +92,13 @@ public:
                 _frames[label] = frame;
             }
         }
+    }
+
+    CrownFrames() = default;
+
+    void Insert(int label, const Frame<Kernel>& frame)
+    {
+        _frames.insert({label, frame});
     }
 
     const Frame<Kernel>& GetFrame(int label) const

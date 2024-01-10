@@ -4,8 +4,9 @@ project ("OrthoMeshTools" C CXX)
 
 set(CMAKE_BUILD_TYPE Release)
 
-find_package(CGAL REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(CGAL REQUIRED)
+include(CGAL_Eigen3_support)
 find_package(OpenMP REQUIRED)
 find_package(assimp REQUIRED)
 find_package(nlohmann_json REQUIRED)
@@ -31,7 +32,7 @@ add_executable(ColorMeshByLabel "ColorMeshByLabel/ColorMeshByLabel.cpp" "ColorMe
 target_link_libraries(ColorMeshByLabel PRIVATE CGAL::CGAL assimp::assimp)
 
 add_executable(OrthoScanDeform "OrthoScanDeform/OrthoScanDeformApp.cpp" "OrthoScanDeform/OrthoScanDeform.h" "MeshFix/MeshFix.cpp" "Polyhedron.cpp")
-target_link_libraries(OrthoScanDeform PRIVATE CGAL::CGAL assimp::assimp)
+target_link_libraries(OrthoScanDeform PRIVATE CGAL::CGAL assimp::assimp CGAL::Eigen3_support)
 
 if(pybind11_FOUND)
     pybind11_add_module(OrthoMeshTools "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
