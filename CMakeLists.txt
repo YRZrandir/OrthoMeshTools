@@ -30,6 +30,9 @@ target_link_libraries(GumTrimLine PRIVATE CGAL::CGAL assimp::assimp OpenMP::Open
 add_executable(ColorMeshByLabel "ColorMeshByLabel/ColorMeshByLabel.cpp" "ColorMeshByLabel/ColorMeshByLabel.h" "Polyhedron.cpp")
 target_link_libraries(ColorMeshByLabel PRIVATE CGAL::CGAL assimp::assimp)
 
+add_executable(OrthoScanDeform "OrthoScanDeform/OrthoScanDeformApp.cpp" "OrthoScanDeform/OrthoScanDeform.h" "MeshFix/MeshFix.cpp" "Polyhedron.cpp")
+target_link_libraries(OrthoScanDeform PRIVATE CGAL::CGAL assimp::assimp)
+
 if(pybind11_FOUND)
     pybind11_add_module(OrthoMeshTools "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
      "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "Polyhedron.cpp" "Polyhedron.h"

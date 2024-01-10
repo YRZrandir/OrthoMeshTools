@@ -20,7 +20,7 @@
 #ifdef FOUND_PYBIND11
 #include <pybind11/pybind11.h>
 #endif
-
+// TODO: remove this
 bool gVerbose = true;
 namespace 
 {

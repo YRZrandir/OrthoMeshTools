@@ -13,6 +13,8 @@
 #include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
 #include "../MeshFix/MeshFix.h"
 #include "GumTrimLine.h"
+#include "../Ortho.h"
+
 namespace
 {
     using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
@@ -306,10 +308,10 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
         throw MeshError("Input mesh has non triangle face: " + input_file);
     }
 
-    std::unique_ptr<internal::CrownFrames<typename Polyhedron::Traits>> crown_frames = nullptr;
+    std::unique_ptr<CrownFrames<typename Polyhedron::Traits>> crown_frames = nullptr;
     if(!frame_file.empty())
     {
-        crown_frames = std::make_unique<internal::CrownFrames<typename Polyhedron::Traits>>(frame_file);
+        crown_frames = std::make_unique<CrownFrames<typename Polyhedron::Traits>>(frame_file);
     }
     CGAL::set_halfedgeds_items_id(mesh);
     printf("Load ortho scan mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());

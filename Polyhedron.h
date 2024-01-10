@@ -19,27 +19,8 @@
 #include <CGAL/Polyhedron_incremental_builder_3.h>
 #include <CGAL/Polyhedron_items_with_id_3.h>
 #include <nlohmann/json.hpp>
+#include "Ortho.h"
 
-class IOError : public std::runtime_error
-{
-public:
-    IOError( const std::string& what_arg ) : std::runtime_error(what_arg) {}
-    IOError( const char* what_arg ) : std::runtime_error(what_arg) {}
-};
-
-class MeshError : public std::runtime_error
-{
-public:
-    MeshError( const std::string& what_arg ) : std::runtime_error(what_arg) {}
-    MeshError( const char* what_arg ) : std::runtime_error(what_arg) {}
-};
-
-class AlgError : public std::runtime_error
-{
-public:
-    AlgError( const std::string& what_arg ) : std::runtime_error(what_arg) {}
-    AlgError( const char* what_arg ) : std::runtime_error(what_arg) {}
-};
 
 template <typename SizeType>
 struct TTriangle

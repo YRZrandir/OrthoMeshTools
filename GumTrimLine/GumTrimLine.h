@@ -14,63 +14,10 @@
 #include <CGAL/Weighted_point_3.h>
 #include "tinycolormap.hpp"
 #include "../EasyOBJ.h"
+#include "../Ortho.h"
 
 namespace internal
 {
-    template <typename Kernel>
-    struct Frame
-    {
-        typename Kernel::Vector_3 right;
-        typename Kernel::Vector_3 front;
-        typename Kernel::Vector_3 up;
-        typename Kernel::Point_3 pos;
-    };
-
-    template <typename Kernel>
-    class CrownFrames
-    {
-    public:
-        CrownFrames(const std::string& path )
-        {
-            using namespace nlohmann;
-            std::ifstream label_ifs( path );
-            if(label_ifs.fail())
-            {
-                throw IOError("Cannot open file: " + path);
-            }
-            json js = json::parse( label_ifs );
-            for(int label = 11; label < 50; label++)
-            {
-                if(js.find(std::to_string(label)) != js.end())
-                {
-                    std::vector<std::vector<double>> frame_data = js[std::to_string(label)].get<std::vector<std::vector<double>>>();
-                    if(frame_data.size() != 4 || frame_data[0].size() != 3 || frame_data[1].size() != 3 || frame_data[2].size() != 3)
-                    {
-                        throw IOError("crown frame json format is invalid.\n");
-                    }
-                    Frame<Kernel> frame;
-                    frame.right = typename Kernel::Vector_3(frame_data[0][0], frame_data[0][1], frame_data[0][2]);
-                    frame.front = typename Kernel::Vector_3(frame_data[1][0], frame_data[1][1], frame_data[1][2]);
-                    frame.up = typename Kernel::Vector_3(frame_data[2][0], frame_data[2][1], frame_data[2][2]);
-                    frame.pos = typename Kernel::Point_3(frame_data[3][0], frame_data[3][1], frame_data[3][2]);
-                    _frames[label] = frame;
-                }
-            }
-        }
-
-        const Frame<Kernel>& GetFrame(int label) const
-        {
-            if(_frames.count(label) == 0)
-            {
-                throw AlgError("Cannot find frame data of label " + std::to_string(label));
-            }
-            return _frames.at(label);
-        }
-    
-    protected:
-        std::unordered_map<int, Frame<Kernel>> _frames;
-    };
-
     template <typename Curve>
     class CurveIterator;
 
