@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <vector>
 #include <nlohmann/json.hpp>
+#include <Eigen/Eigen>
 
 class IOError : public std::runtime_error
 {
@@ -127,6 +128,70 @@ public:
 
 protected:
     std::unordered_map<int, Frame<Kernel>> _frames;
+};
+
+template <typename Scalar>
+class CBCTRegis
+{
+public:
+    CBCTRegis( const std::string& path )
+    {
+        nlohmann::json json = nlohmann::json::parse(std::ifstream(path));
+        for(int label = 10; label < 50; label++)
+        {
+            std::string ios_to_cbct_name = "ios_to_cbct_matrix_" + std::to_string(label);
+            std::string cbct_to_ios_name = "cbct_to_ios_matrix_" + std::to_string(label);
+            for(int i = 0; i < json.size(); i++)
+            {
+                if(json[i].find(ios_to_cbct_name) != json[i].end())
+                {
+                    Eigen::Matrix<Scalar, 4, 4> ios_to_cbct;
+                    std::vector<std::vector<double>> data = json[i][ios_to_cbct_name].get<std::vector<std::vector<double>>>();
+                    for(int r = 0; r < 4; r++)
+                        for(int c = 0; c < 4; c++)
+                            ios_to_cbct(r, c) = data[r][c];
+                    _mats[label].first = Eigen::Transform<Scalar, 3, Eigen::Affine>(ios_to_cbct);
+                }
+                if(json[i].find(cbct_to_ios_name) != json[i].end())
+                {
+                    Eigen::Matrix<Scalar, 4, 4> cbct_to_ios;
+                    std::vector<std::vector<double>> data = json[i][cbct_to_ios_name].get<std::vector<std::vector<double>>>();
+                    for(int r = 0; r < 4; r++)
+                        for(int c = 0; c < 4; c++)
+                            cbct_to_ios(r, c) = data[r][c];
+                    _mats[label].second = Eigen::Transform<Scalar, 3, Eigen::Affine>(cbct_to_ios);
+                }
+            }
+        }
+        printf("CBCT: %zd\n", _mats.size());
+    }
+
+    Eigen::Transform<Scalar, 3, Eigen::Affine> IOS_to_CBCT(int label) const
+    {
+        if(_mats.count(label) != 0)
+        {
+            return _mats.at(label).first;
+        }
+        else
+        {
+            throw AlgError("No cbct info: " + std::to_string(label));
+            //return Eigen::Transform<Scalar, 3, Eigen::Affine>::Identity();
+        }
+    }
+    Eigen::Transform<Scalar, 3, Eigen::Affine> CBCT_to_IOS(int label) const
+    {
+        if(_mats.count(label) != 0)
+        {
+            return _mats.at(label).second;
+        }
+        else
+        {
+            throw AlgError("No cbct info: " + std::to_string(label));
+            //return Eigen::Transform<Scalar, 3, Eigen::Affine>::Identity();
+        }
+    }
+protected:
+    std::unordered_map<int, std::pair<Eigen::Transform<Scalar, 3, Eigen::Affine>, Eigen::Transform<Scalar, 3, Eigen::Affine>>> _mats;
 };
 
 constexpr std::array<float, 3> LabelColorMap(int label)

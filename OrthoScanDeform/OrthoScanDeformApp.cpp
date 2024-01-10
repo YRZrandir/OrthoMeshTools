@@ -35,15 +35,50 @@ std::vector<CrownFrames<Kernel>> LoadPaths( const std::string& path )
     return paths;
 }
 
-std::vector<std::unordered_map<int, Eigen::Matrix4d>> LoadPathsEigen( const std::string& path )
+std::vector<std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>>> LoadPathsEigen( const std::string& path )
 {
     nlohmann::json json = nlohmann::json::parse(std::ifstream(path));
-    std::vector<std::unordered_map<int, Eigen::Matrix4d>> paths;
+    std::vector<std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>>> paths;
     int step = 0;
     while(json.find(std::to_string(step)) != json.end())
     {
-        
+        std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> frames;
+        auto step_data = json[std::to_string(step)];
+        for(int label = 11; label < 50; label++)
+        {
+            if(step_data.find(std::to_string(label)) != step_data.end())
+            {
+                std::vector<double> data = step_data[std::to_string(label)].get<std::vector<double>>();
+                Eigen::Matrix4d mat;
+                for(int r = 0; r < 4; r++)
+                    for(int c = 0; c < 4; c++)
+                        mat(r, c) = data.at(r * 4 + c);
+                frames[label] = Eigen::Transform<double, 3, Eigen::Affine>(mat);
+            }
+        }
+        paths.push_back(frames);
+        step++;
     }
+    return paths;
+}
+
+std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> LoadCrownFrameEigen( const std::string& path )
+{
+    nlohmann::json json = nlohmann::json::parse(std::ifstream(path));
+    std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> frames;
+    for(int label = 11; label < 50; label++)
+    {
+        if(json.find(std::to_string(label)) != json.end())
+        {
+            std::vector<std::vector<double>> frame_data = json[std::to_string(label)].get<std::vector<std::vector<double>>>();
+            Eigen::Matrix4d mat;
+            for(int r = 0; r < 4; r++)
+                for(int c = 0; c < 4; c++)
+                    mat(r, c) = frame_data[r][c];
+            frames[label] = Eigen::Transform<double, 3, Eigen::Affine>(mat);
+        }
+    }
+    return frames;
 }
 
 int main(int argc, char* argv[])
@@ -56,6 +91,7 @@ int main(int argc, char* argv[])
     std::string label_file = "";
     std::string frame_file = "";
     std::string path_file = "";
+    std::string cbct_regis_file = "";
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "-i") == 0)
@@ -73,6 +109,10 @@ int main(int argc, char* argv[])
         else if (std::strcmp(argv[i], "-p") == 0)
         {
             path_file = std::string(argv[i + 1]);
+        }
+        else if (std::strcmp(argv[i], "-c") == 0)
+        {
+            cbct_regis_file = std::string(argv[i + 1]);
         }
         else if (std::strcmp(argv[i], "-h") == 0)
         {
@@ -127,6 +167,7 @@ int main(int argc, char* argv[])
         }
     }
 
+    // A temp solution to determine bottom part (which won't deform).
     auto aabb = CGAL::bbox_3(mesh.points_begin(), mesh.points_end());
     if(upper)
     {
@@ -156,10 +197,17 @@ int main(int argc, char* argv[])
         }
     }
 
-    CrownFrames<KernelEpick> crown_frames(frame_file);
+    // Load crown frames
+    auto crown_frames = LoadCrownFrameEigen(frame_file);
+    auto paths = LoadPathsEigen(path_file);
+
+    // Load cbct registration
+    CBCTRegis<double> cbct_regis(cbct_regis_file);
+
     OrthoScanDeform<Polyhedron, 3> deformer;
-    deformer.SetMesh(&mesh, &crown_frames, upper);
-    auto paths = LoadPaths<KernelEpick>(path_file);
+    deformer.SetMesh(&mesh, crown_frames, upper);
+    deformer.SetCbctRegis(&cbct_regis);
+
     printf("Load %zd steps.\n", paths.size());
     try
     {

@@ -4,8 +4,10 @@
 #include <CGAL/bounding_box.h>
 #include <CGAL/Eigen_solver_traits.h>
 #include <CGAL/Heat_method_3/Surface_mesh_geodesic_distances_3.h>
-#include <eigen3/Eigen/Eigen>
+#include <Eigen/Eigen>
+#include <Eigen/Geometry>
 #include "../EasyOBJ.h"
+#include "../MathTypeConverter.h"
 
 template <typename MeshType, int WNum>
 class OrthoScanDeform
@@ -24,12 +26,12 @@ public:
         std::array<double, WNum> w;
     };
 
-    void SetMesh(const MeshType* mesh, const CrownFrames<Kernel>* crown_frames, bool upper)
+    void SetMesh(const MeshType* mesh, const std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>>& crown_frames, bool upper)
     {
-        this->_mesh = mesh;
-        this->_crown_frames = crown_frames;
-        this->_deform_weights.clear();
-        if(crown_frames->Frames().size() < WNum)
+        _mesh = mesh;
+        _crown_frames = crown_frames;
+        _deform_weights.clear();
+        if(crown_frames.size() < WNum)
         {
             throw AlgError("Invalid crown frame data.");
         }
@@ -53,11 +55,12 @@ public:
         HeatMethod heat_method(*mesh);
         for(auto& [label, vertices] : borders)
         {
+            printf("Computing label %d\n", label);
             heat_method.clear_sources();
             heat_method.add_sources(vertices);
             heat_method.estimate_geodesic_distances(boost::make_assoc_property_map(distances[label]));
         }
-
+        printf("Finish\nComputing Weights...\n");
         for(auto hv : CGAL::vertices(*mesh))
         {
             DeformWeights dw;
@@ -102,20 +105,20 @@ public:
             }
             _deform_weights.push_back(dw);
         }
-
-        for(auto hv : CGAL::vertices(*mesh))
-        {
-            auto p = hv->point() - CGAL::ORIGIN;
-            auto avg = Kernel::Vector_3(0.0, 0.0, 0.0);
-            int count = 0;
-            for(auto nei : CGAL::vertices_around_target(hv, *mesh))
-            {
-                avg += nei->point() - CGAL::ORIGIN;
-                count++;
-            }
-            avg /= count;
-            _constraints.push_back(p - avg);
-        }
+        printf("Finish\n");
+        // for(auto hv : CGAL::vertices(*mesh))
+        // {
+        //     auto p = hv->point() - CGAL::ORIGIN;
+        //     auto avg = Kernel::Vector_3(0.0, 0.0, 0.0);
+        //     int count = 0;
+        //     for(auto nei : CGAL::vertices_around_target(hv, *mesh))
+        //     {
+        //         avg += nei->point() - CGAL::ORIGIN;
+        //         count++;
+        //     }
+        //     avg /= count;
+        //     _constraints.push_back(p - avg);
+        // }
         
         EasyOBJ testout("./weighted_vertices.obj");
         int cnt = 0;
@@ -137,14 +140,25 @@ public:
         }
     }
 
-    void Deform(const CrownFrames<Kernel>& frames)
+    void SetCbctRegis( const CBCTRegis<double>* cbct_regis )
     {
+        _cbct_regis = cbct_regis;
+        // for(auto& [label, local_to_ios] : _crown_frames)
+        // {
+        //     _local_to_cbct[label] = cbct_regis->IOS_to_CBCT(label) * local_to_ios;
+        //     _cbct_to_local[label] = local_to_ios.inverse() * cbct_regis->CBCT_to_IOS(label); 
+        // }
+    }
+
+    void Deform(const std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>>& frames)
+    {
+        printf("Deform...");
         MeshType mesh = *_mesh;
         int count = 0;
         for(auto hv : CGAL::vertices(mesh))
         {
             auto& weights = _deform_weights[count++];
-            auto p = hv->point();
+            Eigen::Vector3d p = ToEigen(hv->point());
             typename Kernel::Point_3 result = CGAL::ORIGIN;
             for(int i = 0; i < WNum; i++)
             {
@@ -152,51 +166,56 @@ public:
                 if(label != 0 && label != 1)
                 {
                     double w = weights.w[i];
-                    result += w * (frames.GetFrame(label).LocalToWorld().transform(CGAL::ORIGIN + (p - _crown_frames->GetFrame(label).pos)) - CGAL::ORIGIN);
+                    Eigen::Vector3d pos = _cbct_regis->CBCT_to_IOS(label) * frames.at(label) * _crown_frames[label].inverse() * p;
+                    result += w * ToCGAL<double, Kernel>(pos);
                 }
                 else if(label == 1)
                 {
                     double w = weights.w[i];
-                    result += w * (p - CGAL::ORIGIN);
+                    result += w * ToCGAL<double, Kernel>(p);
                 }
             }
             hv->point() = result;
         }
-        for(int i = 0; i < 0; i++)
-        {
-            std::vector<typename Kernel::Point_3> new_points(mesh.points_begin(), mesh.points_end());
-            int cnt = 0;
-            for(auto hv : CGAL::vertices(mesh))
-            {
-                if(hv->_label != 0)
-                {
-                    cnt++;
-                    continue;
-                }
-                typename Kernel::Vector_3 avg(0.0, 0.0, 0.0);
-                int nei_count = 0;
-                for(auto nei : CGAL::vertices_around_target(hv, mesh))
-                {
-                    avg += nei->point() - CGAL::ORIGIN;
-                    nei_count++;
-                }
-                avg /= nei_count;
-                typename Kernel::Point_3 target = CGAL::ORIGIN + avg + _constraints[cnt];
-                new_points[cnt] = CGAL::midpoint(target, new_points[cnt]);
-                cnt++;
-            }
-            cnt = 0;
-            for(auto hv : CGAL::vertices(mesh))
-            {
-                hv->point() = new_points[cnt++];
-            }
-        }
+        // for(int i = 0; i < 0; i++)
+        // {
+        //     std::vector<typename Kernel::Point_3> new_points(mesh.points_begin(), mesh.points_end());
+        //     int cnt = 0;
+        //     for(auto hv : CGAL::vertices(mesh))
+        //     {
+        //         if(hv->_label != 0)
+        //         {
+        //             cnt++;
+        //             continue;
+        //         }
+        //         typename Kernel::Vector_3 avg(0.0, 0.0, 0.0);
+        //         int nei_count = 0;
+        //         for(auto nei : CGAL::vertices_around_target(hv, mesh))
+        //         {
+        //             avg += nei->point() - CGAL::ORIGIN;
+        //             nei_count++;
+        //         }
+        //         avg /= nei_count;
+        //         typename Kernel::Point_3 target = CGAL::ORIGIN + avg + _constraints[cnt];
+        //         new_points[cnt] = CGAL::midpoint(target, new_points[cnt]);
+        //         cnt++;
+        //     }
+        //     cnt = 0;
+        //     for(auto hv : CGAL::vertices(mesh))
+        //     {
+        //         hv->point() = new_points[cnt++];
+        //     }
+        // }
+        printf("Done.\n");
         mesh.WriteOBJ("./deformed.obj");
     }
 
 protected:
     const MeshType* _mesh = nullptr;
-    const CrownFrames<Kernel>* _crown_frames = nullptr;
+    std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> _crown_frames;
+    std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> _local_to_cbct;
+    std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> _cbct_to_local;
+    const CBCTRegis<double>* _cbct_regis;
     std::vector<DeformWeights> _deform_weights;
     std::vector<typename Kernel::Vector_3> _constraints;
 };
