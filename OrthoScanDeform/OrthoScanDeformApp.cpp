@@ -72,12 +72,60 @@ std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> LoadCrownFra
         {
             std::vector<std::vector<double>> frame_data = json[std::to_string(label)].get<std::vector<std::vector<double>>>();
             Eigen::Matrix4d mat;
-            for(int r = 0; r < 4; r++)
+            for(int r = 0; r < 3; r++)
                 for(int c = 0; c < 4; c++)
-                    mat(r, c) = frame_data[r][c];
+                    mat(r, c) = frame_data.at(c).at(r);
+            mat(3, 0) = 0.0;
+            mat(3, 1) = 0.0;
+            mat(3, 2) = 0.0;
+            mat(3, 3) = 1.0;
             frames[label] = Eigen::Transform<double, 3, Eigen::Affine>(mat);
         }
     }
+    return frames;
+}
+
+std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> LoadCBCTTeethFrames( const std::string& path )
+{
+    Assimp::Importer importer;
+    importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS,
+     aiComponent_ANIMATIONS | aiComponent_COLORS | aiComponent_NORMALS | aiComponent_TEXCOORDS | aiComponent_TANGENTS_AND_BITANGENTS );
+    const aiScene* scene = importer.ReadFile(path, aiProcess_JoinIdenticalVertices | aiProcess_RemoveComponent);
+    if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode || scene->mNumMeshes < 1)
+    {
+        throw IOError("cannot read mesh: " + path);
+    }
+    printf("Load %d meshes\n", scene->mNumMeshes);
+    std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> frames;
+    for(unsigned i = 0; i < scene->mNumMeshes; i++)
+    {
+        const aiMesh* mesh = scene->mMeshes[i];
+        
+        int label = std::atoi(mesh->mName.C_Str());
+
+        Eigen::Vector3d cent(0.0, 0.0, 0.0);
+        double w_sum = 0.0;
+        for(unsigned j = 0; j < mesh->mNumFaces; j++)
+        {
+            Eigen::Matrix3d m;
+            m.col(0) = ToEigen(mesh->mVertices[mesh->mFaces[j].mIndices[0]]).cast<double>();
+            m.col(1) = ToEigen(mesh->mVertices[mesh->mFaces[j].mIndices[1]]).cast<double>();
+            m.col(2) = ToEigen(mesh->mVertices[mesh->mFaces[j].mIndices[2]]).cast<double>();
+            double w = m.determinant();
+            cent += (m.col(0) + m.col(1) + m.col(2)) / 4.0 * w;
+            w_sum += w;
+        }
+        cent /= w_sum;
+
+        frames.insert({label, Eigen::Transform<double, 3, Eigen::Affine>::Identity()});
+        frames[label].pretranslate(cent);
+    }
+    printf("Loaded %zd cbct frames: ", frames.size());
+    for(auto& [label, _] : frames)
+    {
+        printf("%d, ", label);
+    }
+    printf("\n");
     return frames;
 }
 
@@ -92,6 +140,7 @@ int main(int argc, char* argv[])
     std::string frame_file = "";
     std::string path_file = "";
     std::string cbct_regis_file = "";
+    std::string cbct_teeth = "";
     for (int i = 1; i < argc; i++)
     {
         if (std::strcmp(argv[i], "-i") == 0)
@@ -114,11 +163,24 @@ int main(int argc, char* argv[])
         {
             cbct_regis_file = std::string(argv[i + 1]);
         }
+        else if (std::strcmp(argv[i], "-t") == 0)
+        {
+            cbct_teeth = std::string(argv[i + 1]);
+        }
         else if (std::strcmp(argv[i], "-h") == 0)
         {
             return 0;
         }
     }
+#ifdef _DEBUG
+    std::filesystem::current_path(R"(D:\dev\Ortho\OrthoMeshTools\test\MeshDeform)");
+    input_file = "oral_scan_L.ply";
+    label_file = "oral_scan_L.json";
+    frame_file = "crown_frame.json";
+    path_file = "path.json";
+    cbct_regis_file = "registration.json";
+    cbct_teeth = "teeth_fdi.glb";
+#endif
     Polyhedron mesh;
     if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
     {
@@ -148,6 +210,16 @@ int main(int argc, char* argv[])
     {
         mesh.LoadLabels(label_file);
     }
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(hv->_label % 10 == 8)
+        {
+            hv->_label = 0;
+        }
+    }
+    mesh.UpdateFaceLabels();
+
+    printf("Load mesh: V=%zd, F=%zd\n", mesh.size_of_vertices(), mesh.size_of_facets());
     // test upper or lower ortho mesh
     bool upper = true;
     for(auto hv : CGAL::vertices(mesh))
@@ -197,21 +269,26 @@ int main(int argc, char* argv[])
         }
     }
 
-    // Load crown frames
-    auto crown_frames = LoadCrownFrameEigen(frame_file);
-    auto paths = LoadPathsEigen(path_file);
-
-    // Load cbct registration
-    CBCTRegis<double> cbct_regis(cbct_regis_file);
-
-    OrthoScanDeform<Polyhedron, 3> deformer;
-    deformer.SetMesh(&mesh, crown_frames, upper);
-    deformer.SetCbctRegis(&cbct_regis);
-
-    printf("Load %zd steps.\n", paths.size());
     try
     {
-        deformer.Deform(paths[0]);
+        auto crown_frames = LoadCrownFrameEigen(frame_file);
+        auto paths = LoadPathsEigen(path_file);
+        CBCTRegis<double> cbct_regis(cbct_regis_file);
+        auto cbct_frames = LoadCBCTTeethFrames(cbct_teeth);
+
+        OrthoScanDeform<Polyhedron, 3> deformer;
+        deformer.SetMesh(&mesh, crown_frames, upper);
+        deformer.SetCbctRegis(&cbct_regis);
+        deformer.SetCbctCentroids(cbct_frames);
+        
+        printf("Load %zd steps.\n", paths.size());
+        for(int i = 0; i < paths.size(); i++)
+        {
+            printf("Deform step %d of %zd tooth...", i, paths[i].size());
+            auto m = deformer.Deform(paths[i]);
+            printf("Done.\n");
+            m.WriteOBJ("./deform_step" + std::to_string(i) + ".obj");
+        }
     }
     catch(const std::exception& e)
     {

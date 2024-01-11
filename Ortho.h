@@ -163,7 +163,12 @@ public:
                 }
             }
         }
-        printf("CBCT: %zd\n", _mats.size());
+        printf("CBCT: %zd, labels = [", _mats.size());
+        for(auto& [label, _] : _mats)
+        {
+            printf("%d, ", label);
+        }
+        printf("]\n");
     }
 
     Eigen::Transform<Scalar, 3, Eigen::Affine> IOS_to_CBCT(int label) const
