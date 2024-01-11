@@ -2,7 +2,6 @@
 #include <CGAL/boost/graph/io.h>
 #include <vector>
 #include <unordered_map>
-#include "../MeshFix/MeshFix.h"
 
 template <typename Kernel>
 std::vector<CrownFrames<Kernel>> LoadPaths( const std::string& path )
@@ -285,9 +284,9 @@ int main(int argc, char* argv[])
         for(int i = 0; i < paths.size(); i++)
         {
             printf("Deform step %d of %zd tooth...", i, paths[i].size());
-            auto m = deformer.Deform(paths[i]);
+            auto m = deformer.Deform(paths[paths.size() - 1 - i]);
             printf("Done.\n");
-            m.WriteOBJ("./deform_step" + std::to_string(i) + ".obj");
+            m.WriteOBJ("./deform_step" + std::to_string(paths.size() - 1 - i) + ".obj");
         }
     }
     catch(const std::exception& e)

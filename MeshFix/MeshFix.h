@@ -310,7 +310,9 @@ void FixMesh(
     int max_hole_edges,
     float max_hole_diam,
     bool refine,
-    int max_retry
+    int max_retry,
+    bool fair = false,
+    std::vector<std::pair<std::vector<typename Polyhedron::Vertex_handle>, std::vector<typename Polyhedron::Facet_handle>>>* patch = nullptr
 )
 {
     using Kernel = typename Polyhedron::K;
@@ -331,7 +333,7 @@ void FixMesh(
         throw AlgError("Cannot remove non-manifold parts. Try increasing retry times.");
     }
 
-    Polyhedron m;
+    Polyhedron& m = output_mesh;
     m.BuildFromVerticesFaces(input_vertices, faces);
     
     CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);
@@ -356,11 +358,25 @@ void FixMesh(
     {
         if(!filter_small_holes || (filter_small_holes && m.IsSmallHole(hh, max_hole_edges, max_hole_diam)))
         {
-            if(refine)
+            if(refine && fair)
+            {
+                std::vector<typename Polyhedron::Vertex_handle> patch_vertices;
+                std::vector<typename Polyhedron::Facet_handle> patch_faces;
+                CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(m, hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertices));
+                if(patch != nullptr)
+                {
+                    patch->emplace_back(std::move(patch_vertices), std::move(patch_faces));
+                }
+            }
+            else if(refine)
             {
                 std::vector<typename Polyhedron::Vertex_handle> patch_vertices;
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
                 CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(m, hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertices));
+                if(patch != nullptr)
+                {
+                    patch->emplace_back(std::move(patch_vertices), std::move(patch_faces));
+                }
             }
             else
             {
@@ -369,8 +385,6 @@ void FixMesh(
             }
         }
     }
-
-    output_mesh = m;
 }
 
 template <typename Polyhedron>
