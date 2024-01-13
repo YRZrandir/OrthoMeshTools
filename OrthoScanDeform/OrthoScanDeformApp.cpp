@@ -131,6 +131,7 @@ std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> LoadCBCTTeet
 
 int main(int argc, char* argv[])
 {
+    Eigen::Matrix3f m0;
     using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
     using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
     argparse::ArgumentParser argparse("OrthoScanDeform");
