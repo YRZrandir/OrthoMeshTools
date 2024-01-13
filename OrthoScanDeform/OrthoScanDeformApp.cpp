@@ -1,7 +1,8 @@
 #include "OrthoScanDeform.h"
-#include <CGAL/boost/graph/io.h>
 #include <vector>
 #include <unordered_map>
+#include <argparse/argparse.hpp>
+#include <CGAL/boost/graph/io.h>
 
 template <typename Kernel>
 std::vector<CrownFrames<Kernel>> LoadPaths( const std::string& path )
@@ -132,45 +133,29 @@ int main(int argc, char* argv[])
 {
     using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
     using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
-
-    auto start_time = std::chrono::high_resolution_clock::now();
-    std::string input_file = "";
-    std::string label_file = "";
-    std::string frame_file = "";
-    std::string path_file = "";
-    std::string cbct_regis_file = "";
-    std::string cbct_teeth = "";
-    for (int i = 1; i < argc; i++)
+    argparse::ArgumentParser argparse("OrthoScanDeform");
+    argparse.add_argument("--input_file", "-i").required();
+    argparse.add_argument("--label_file", "-l").required();
+    argparse.add_argument("--frame_file", "-f").required();
+    argparse.add_argument("--path_file", "-p").required();
+    argparse.add_argument("--cbct_regis_file", "-c").required();
+    argparse.add_argument("--cbct_teeth", "-t").required();
+    try
     {
-        if (std::strcmp(argv[i], "-i") == 0)
-        {
-            input_file = std::string(argv[i + 1]);
-        }
-        else if (std::strcmp(argv[i], "-l") == 0)
-        {
-            label_file = std::string(argv[i + 1]);
-        }
-        else if (std::strcmp(argv[i], "-f") == 0)
-        {
-            frame_file = std::string(argv[i + 1]);
-        }
-        else if (std::strcmp(argv[i], "-p") == 0)
-        {
-            path_file = std::string(argv[i + 1]);
-        }
-        else if (std::strcmp(argv[i], "-c") == 0)
-        {
-            cbct_regis_file = std::string(argv[i + 1]);
-        }
-        else if (std::strcmp(argv[i], "-t") == 0)
-        {
-            cbct_teeth = std::string(argv[i + 1]);
-        }
-        else if (std::strcmp(argv[i], "-h") == 0)
-        {
-            return 0;
-        }
+        argparse.parse_args(argc, argv);
     }
+    catch(const std::exception& e)
+    {
+        std::cout << e.what() << std::endl;
+    }
+
+    std::string input_file = argparse.get("-i");
+    std::string label_file = argparse.get("-l");
+    std::string frame_file = argparse.get("-f");
+    std::string path_file = argparse.get("-p");
+    std::string cbct_regis_file = argparse.get("-c");
+    std::string cbct_teeth = argparse.get("-t");
+   
 #ifdef _DEBUG
     std::filesystem::current_path(R"(D:\dev\Ortho\OrthoMeshTools\test\MeshDeform)");
     input_file = "oral_scan_L.ply";
@@ -180,6 +165,7 @@ int main(int argc, char* argv[])
     cbct_regis_file = "registration.json";
     cbct_teeth = "teeth_fdi.glb";
 #endif
+    auto start_time = std::chrono::high_resolution_clock::now();
     Polyhedron mesh;
     if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
     {
@@ -240,39 +226,43 @@ int main(int argc, char* argv[])
 
     // A temp solution to determine bottom part (which won't deform).
     auto aabb = CGAL::bbox_3(mesh.points_begin(), mesh.points_end());
-    if(upper)
-    {
-        for(auto hv : CGAL::vertices(mesh))
-        {
-            if(hv->point().z() > aabb.zmax() - aabb.z_span() * 0.1)
-            {
-                hv->_label = 1;
-            }
-        }
-    }
-    else
-    {
-        for(auto hv : CGAL::vertices(mesh))
-        {
-            if(hv->point().z() < aabb.zmin() + aabb.z_span() * 0.1)
-            {
-                hv->_label = 1;
-            }
-        }
-    }
-    for(auto hf : CGAL::faces(mesh))
-    {
-        if(hf->halfedge()->vertex()->_label == 1 || hf->halfedge()->next()->vertex()->_label == 1 || hf->halfedge()->prev()->vertex()->_label == 1)
-        {
-            hf->_label = 1;
-        }
-    }
+    // if(upper)
+    // {
+    //     for(auto hv : CGAL::vertices(mesh))
+    //     {
+    //         if(hv->point().z() > aabb.zmax() - aabb.z_span() * 0.1)
+    //         {
+    //             hv->_label = 1;
+    //         }
+    //     }
+    // }
+    // else
+    // {
+    //     for(auto hv : CGAL::vertices(mesh))
+    //     {
+    //         if(hv->point().z() < aabb.zmin() + aabb.z_span() * 0.1)
+    //         {
+    //             hv->_label = 1;
+    //         }
+    //     }
+    // }
+    // for(auto hf : CGAL::faces(mesh))
+    // {
+    //     if(hf->halfedge()->vertex()->_label == 1 || hf->halfedge()->next()->vertex()->_label == 1 || hf->halfedge()->prev()->vertex()->_label == 1)
+    //     {
+    //         hf->_label = 1;
+    //     }
+    // }
 
     try
     {
+        printf("Loading crown frames...");
         auto crown_frames = LoadCrownFrameEigen(frame_file);
+        printf("Loading paths...");
         auto paths = LoadPathsEigen(path_file);
+        printf("Loading cbct registration...");
         CBCTRegis<double> cbct_regis(cbct_regis_file);
+        printf("Loading cbct teeth...");
         auto cbct_frames = LoadCBCTTeethFrames(cbct_teeth);
 
         OrthoScanDeform<Polyhedron, 3> deformer;

@@ -1,28 +1,30 @@
 #include "GumTrimLine.h"
 #include <chrono>
-#include <gflags/gflags.h>
+#include <argparse/argparse.hpp>
                                                                                                                                                                                                                                                        
-DEFINE_string(input_file, "", "file path of input mesh");
-DEFINE_string(label_file, "", "");
-DEFINE_string(frame_file, "", "");
-DEFINE_string(output_file, "", "file path of output mesh");
-DEFINE_int32(smooth, 10, "a non-nagetive integer that specifies the iteration number of trim line smoothing");
-DEFINE_double(fix_factor, 0.0, "");
-
 int main(int argc, char *argv[])
 {
-    gflags::SetUsageMessage("Extract gum trim line and output it as an .obj file.");
-    gflags::ParseCommandLineFlags(&argc, &argv, true);
-    if (FLAGS_input_file.empty() || FLAGS_label_file.empty() || FLAGS_output_file.empty() || FLAGS_smooth < 0)
+    argparse::ArgumentParser argparse("GumTrimLine");
+    argparse.add_description("Extract gum trim line and output it as an .obj file.");
+    argparse.add_argument("--input_file", "-i").required().help("specify the input mesh file.");
+    argparse.add_argument("--label_file", "-l").required().help("specify the input label file.");
+    argparse.add_argument("--frame_file", "-f").required().help("specify the crown frame file.");
+    argparse.add_argument("--output_file", "-o").required().help("specify the output file.");
+    argparse.add_argument("--smooth", "-s").default_value("10").help("a non-nagetive integer that specifies the iteration number of trim line smoothing");
+    argparse.add_argument("--fix_factor", "-f").default_value(0.0).help("");
+    try
     {
-        std::cout << "Invalid paramters. Use --help for help." << std::endl;
-        return -1;
+        argparse.parse_args(argc, argv);
     }
-
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+    }
+    
     try
     {
         auto start_time = std::chrono::high_resolution_clock::now();
-        GumTrimLine(FLAGS_input_file, FLAGS_label_file, FLAGS_frame_file, FLAGS_output_file, FLAGS_smooth, FLAGS_fix_factor);
+        GumTrimLine(argparse.get("input_file"), argparse.get("label_file"), argparse.get("frame_file"), argparse.get("output_file"), argparse.get<int>("smooth"), argparse.get<double>("fix_factor"));
         std::cout << "Time = " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time) << std::endl;
         std::cout << "===============================" << std::endl;
     }
