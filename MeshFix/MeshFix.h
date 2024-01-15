@@ -15,6 +15,7 @@
 #include <CGAL/IO/Color.h>
 #include <CGAL/Polyhedron_incremental_builder_3.h>
 #include <CGAL/Polyhedron_items_with_id_3.h>
+#include "../print.h"
 
 extern bool gVerbose;
 namespace internal

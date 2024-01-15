@@ -14,6 +14,7 @@
 #include <CGAL/Weighted_point_3.h>
 #include "tinycolormap.hpp"
 #include "../EasyOBJ.h"
+#include "../print.h"
 
 namespace internal
 {
