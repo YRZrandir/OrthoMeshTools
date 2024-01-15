@@ -116,8 +116,7 @@ public:
         auto [vertices, faces] = mesh.ToVerticesTriangles();
         auto labels = mesh.WriteLabels();
         std::vector<std::pair<std::vector<typename MeshType::Vertex_handle>, std::vector<typename MeshType::Facet_handle>>> patch;
-        FixMesh(vertices, faces, mesh, true, 1000, true, false, 100, 100, true, 10, false, &patch);
-
+        FixMeshWithLabel(vertices, faces, labels, mesh, true, 1000, true, false, 100, 100, true, 10, &patch);
         for(auto& pair : patch)
         {
             std::unordered_set<typename MeshType::Vertex_handle> vertex_to_smooth;
