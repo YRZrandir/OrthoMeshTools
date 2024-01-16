@@ -111,5 +111,6 @@ int main(int argc, char* argv[])
     }
 
     mesh.WriteOBJ(parser.get("-o"));
+    mesh.WriteLabels(parser.get("-ol"));
     return 0;
 }
