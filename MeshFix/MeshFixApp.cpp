@@ -29,7 +29,10 @@ int main(int argc, char* argv[])
     argparse.add_argument("--output_label", "-lo").help("specify the output label file");
     argparse.add_argument("--remove_small_components", "-k").help("").nargs(1).scan<'g', double>().default_value(0);
     argparse.add_argument("--fix_self_intersection").flag();
-    argparse.add_argument("--filter_small_holes", "-f").help("").nargs(2);
+    argparse.add_argument("--filter_small_holes", "-f").help("").nargs(2).default_value(std::pair<int, double>(0, 0.0));
+    argparse.add_argument("--refine", "-r").help("").flag();
+    argparse.add_argument("--max_retry", "-m").help("").scan<'i', int>().default_value(10);
+    
     std::string path;
     std::string output_path;
     std::string input_label;

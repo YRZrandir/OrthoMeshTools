@@ -43,6 +43,9 @@ if(TARGET CGAL::Ceres_support)
     target_link_libraries(OrthoScanDeform PUBLIC CGAL::Ceres_support)
 endif()
 
+add_executable(OrthoScanBase "OrthoScanBase/OrthoScanBase.cpp" "MeshFix/MeshFix.cpp")
+target_link_libraries(OrthoScanBase PUBLIC Ortho argparse::argparse)
+
 if(pybind11_FOUND)
     pybind11_add_module(OrthoMeshTools "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
      "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp")
