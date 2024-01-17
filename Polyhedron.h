@@ -398,8 +398,6 @@ public:
         {
             hv->_label = labels[id];
             id++;
-            if(hv->_label == 100 || hv->_label < 10)
-                hv->_label = 0;
         }
 
         UpdateFaceLabels();

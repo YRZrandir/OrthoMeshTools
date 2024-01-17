@@ -218,6 +218,9 @@ int main(int argc, char* argv[])
     {
         mesh.LoadLabels(label_file);
     }
+    auto [vertices, faces] = mesh.ToVerticesTriangles();
+    FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, true, false, 100, 100, true, 10);
+
     for(auto hv : CGAL::vertices(mesh))
     {
         if(hv->_label % 10 == 8)
@@ -248,34 +251,34 @@ int main(int argc, char* argv[])
     }
 
     // A temp solution to determine bottom part (which won't deform).
-    auto aabb = CGAL::bbox_3(mesh.points_begin(), mesh.points_end());
-    if(upper)
-    {
-        for(auto hv : CGAL::vertices(mesh))
-        {
-            if(hv->point().z() > aabb.zmax() - aabb.z_span() * 0.1)
-            {
-                hv->_label = 1;
-            }
-        }
-    }
-    else
-    {
-        for(auto hv : CGAL::vertices(mesh))
-        {
-            if(hv->point().z() < aabb.zmin() + aabb.z_span() * 0.1)
-            {
-                hv->_label = 1;
-            }
-        }
-    }
-    for(auto hf : CGAL::faces(mesh))
-    {
-        if(hf->halfedge()->vertex()->_label == 1 || hf->halfedge()->next()->vertex()->_label == 1 || hf->halfedge()->prev()->vertex()->_label == 1)
-        {
-            hf->_label = 1;
-        }
-    }
+    // auto aabb = CGAL::bbox_3(mesh.points_begin(), mesh.points_end());
+    // if(upper)
+    // {
+    //     for(auto hv : CGAL::vertices(mesh))
+    //     {
+    //         if(hv->point().z() > aabb.zmax() - aabb.z_span() * 0.1)
+    //         {
+    //             hv->_label = 1;
+    //         }
+    //     }
+    // }
+    // else
+    // {
+    //     for(auto hv : CGAL::vertices(mesh))
+    //     {
+    //         if(hv->point().z() < aabb.zmin() + aabb.z_span() * 0.1)
+    //         {
+    //             hv->_label = 1;
+    //         }
+    //     }
+    // }
+    // for(auto hf : CGAL::faces(mesh))
+    // {
+    //     if(hf->halfedge()->vertex()->_label == 1 || hf->halfedge()->next()->vertex()->_label == 1 || hf->halfedge()->prev()->vertex()->_label == 1)
+    //     {
+    //         hf->_label = 1;
+    //     }
+    // }
 
     try
     {
