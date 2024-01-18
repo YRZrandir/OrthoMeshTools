@@ -399,10 +399,10 @@ void Optimize(Polyhedron &mesh)
 int main(int argc, char *argv[])
 {
     argparse::ArgumentParser parser;
-    parser.add_argument("--input_file", "-i").required().help("");
-    parser.add_argument("--input_label", "-l").required().help("");
-    parser.add_argument("--output_file", "-o").required().help("");
-    parser.add_argument("--output_label", "-ol").required().help("");
+    parser.add_argument("--input_file", "-i").required().help("specify the input mesh.");
+    parser.add_argument("--input_label", "-l").required().help("specify the input labels.");
+    parser.add_argument("--output_file", "-o").required().help("specify the output file.");
+    parser.add_argument("--output_label", "-ol").required().help("specify the output labels.");
     parser.parse_args(argc, argv);
 
     Polyhedron mesh;
