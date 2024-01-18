@@ -308,6 +308,11 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
         throw MeshError("Input mesh has non triangle face: " + input_file);
     }
 
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(hv->_label == 1)
+            hv->_label = 0;
+    }
     std::unique_ptr<CrownFrames<typename Polyhedron::Traits>> crown_frames = nullptr;
     if(!frame_file.empty())
     {

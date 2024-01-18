@@ -8,6 +8,7 @@
 #include <CGAL/Polygon_mesh_processing/clip.h>
 #include <CGAL/Polygon_mesh_processing/remesh.h>
 #include <CGAL/Polygon_mesh_processing/refine.h>
+#include <CGAL/Polygon_mesh_processing/repair_degeneracies.h>
 #include <CGAL/Vector_3.h>
 #include "../Polyhedron.h"
 #include "../MeshFix/MeshFix.h"
@@ -265,7 +266,6 @@ void GenerateBase2(Polyhedron &mesh)
     for(auto hf : CGAL::faces(mesh))
         old_faces.insert(hf);
     CGAL::Polygon_mesh_processing::isotropic_remeshing(new_faces, target_len, mesh, CGAL::parameters::relax_constraints(true).number_of_relaxation_steps(3).number_of_iterations(3));
-
     std::unordered_set<Polyhedron::Vertex_handle> vertex_to_fair;
     new_faces.clear();
     for(auto hf : CGAL::faces(mesh))
@@ -303,7 +303,7 @@ void GenerateBase2(Polyhedron &mesh)
     }
     std::vector<Polyhedron::Facet_handle> patch_faces;
     std::vector<Polyhedron::Vertex_handle> patch_vertex;
-    CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(mesh, hole_hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertex));
+    CGAL::Polygon_mesh_processing::triangulate_hole(mesh, hole_hh, std::back_inserter(patch_faces));
     for (auto hv : patch_vertex)
     {
         hv->_label = 1;
@@ -335,6 +335,7 @@ void Optimize(Polyhedron &mesh)
         {
         }
     };
+    CGAL::Polygon_mesh_processing::remove_almost_degenerate_faces(mesh, CGAL::parameters::needle_threshold(100).cap_threshold(std::cos(3.14159 / 2 * 0.9)));
     double avg_area = 0.0;
     double avg_len = 0.0;
     for(auto hf : CGAL::faces(mesh))
@@ -354,7 +355,11 @@ void Optimize(Polyhedron &mesh)
     double threshold = avg_len * avg_len * 16;
     for(auto hf : CGAL::faces(mesh))
     {
-        if(hf->halfedge()->vertex()->_label == 0 && hf->halfedge()->next()->vertex()->_label == 0 && hf->halfedge()->next()->next()->vertex()->_label == 0)
+        int cnt = 0;
+        if(hf->halfedge()->vertex()->_label == 0) cnt++;
+        if(hf->halfedge()->next()->vertex()->_label == 0) cnt++;
+        if(hf->halfedge()->next()->next()->vertex()->_label == 0) cnt++;
+        if(cnt >= 1)
         {
             auto p0 = hf->halfedge()->vertex()->point();
             auto p1 = hf->halfedge()->next()->vertex()->point();

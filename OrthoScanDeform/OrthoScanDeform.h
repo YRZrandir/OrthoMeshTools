@@ -61,11 +61,11 @@ public:
 
         printf("calculate target pos...");
         int count = 0;
-        for (auto hv : CGAL::vertices(mesh))
+        for (auto hv : control_vertices)
         {
             if (hv->_label != 0)
             {
-                Eigen::Vector3d p(hv->point().x(), hv->point().y(), hv->point().z());
+                Eigen::Vector3d p = ToEigen(hv->point());
                 int label = hv->_label;
                 if (label != 1)
                 {
@@ -163,7 +163,7 @@ public:
             printf("preprocessing...");
             CGAL::set_halfedgeds_items_id(mesh);
 
-            CGAL::Surface_mesh_deformation<MeshType> deformation(mesh);
+            CGAL::Surface_mesh_deformation<MeshType, CGAL::Default, CGAL::Default, CGAL::Deformation_algorithm_tag::SRE_ARAP> deformation(mesh);
             deformation.set_sre_arap_alpha(100.0);
             std::vector<typename MeshType::Vertex_handle> roi_vertices;
             for (auto hv : CGAL::vertices(mesh))
@@ -177,9 +177,49 @@ public:
             for (auto hv : CGAL::vertices(mesh))
                 if (hv->_label != 0)
                     control_vertices.push_back(static_cast<typename MeshType::Vertex_handle>(hv));
+
+            // For better deformation, we want to control the positions of some gum vertices that are close to the gumline.
+            // This can be very time-consuming. maybe need a better solution.
+            // std::unordered_map<Polyhedron::Vertex_handle, int> gumv_label_map;
+            // {
+            //     using LA = CGAL::Eigen_solver_traits<Eigen::SimplicialLDLT<typename CGAL::Eigen_sparse_matrix<double>::EigenType>>;
+            //     using HeatMethod = CGAL::Heat_method_3::Surface_mesh_geodesic_distances_3<Polyhedron, CGAL::Heat_method_3::Intrinsic_Delaunay,
+            //                                                                             typename boost::property_map<Polyhedron, CGAL::vertex_point_t>::const_type, LA, Polyhedron::Traits::Kernel>;    
+            //     std::unordered_map<int, std::unordered_map<typename Polyhedron::Vertex_handle, double>> distances;
+            //     std::unordered_map<int, std::vector<Polyhedron::Vertex_handle>> labelwise_borders;
+            //     HeatMethod heat_method(mesh);
+            //     // for(auto hh : CGAL::halfedges(mesh))
+            //     // {
+            //     //     if(hh->facet() && hh->opposite() && hh->opposite()->facet() && hh->facet()->_label != 0 && hh->opposite()->facet()->_label == 0)
+            //     // }
+            //     for(auto hv : CGAL::vertices(mesh))
+            //     {
+            //         if(hv->_label != 0 && hv->_label != 1)
+            //             labelwise_borders[hv->_label].push_back(hv);
+            //     }
+
+            //     for(auto& [label, sources] : labelwise_borders)
+            //     {
+            //         heat_method.clear_sources();
+            //         heat_method.add_sources(sources);
+            //         heat_method.estimate_geodesic_distances(distances[label]);
+            //     }
+
+            //     for(auto hv : CGAL::vertices(mesh))
+            //     {
+            //         if(hv->_label != 0)
+            //             continue;
+            //         if(gumv_label_map.count(hv) != 0)
+            //             continue;
+                    
+            //     }
+            // }
             deformation.insert_control_vertices(control_vertices.begin(), control_vertices.end());
 
-            deformation.preprocess();
+            if(!deformation.preprocess())
+            {
+                throw AlgError("Failed to deform step " + std::to_string(step));
+            }
 
             printf("calculate target pos...");
             if (step == 0)
@@ -223,6 +263,7 @@ public:
                     }
                 }
             }
+            mesh.WriteOBJ("mid" + std::to_string(step) + ".obj");
 
             printf("deform...");
             deformation.deform(10, 1e-4);
@@ -259,9 +300,8 @@ public:
             }
 
             auto [vertices, faces] = mesh.ToVerticesTriangles();
-            auto labels = mesh.WriteLabels();
             std::vector<std::pair<std::vector<typename MeshType::Vertex_handle>, std::vector<typename MeshType::Facet_handle>>> patch;
-            FixMeshWithLabel(vertices, faces, labels, mesh, true, 1000, true, false, 100, 100, true, 10, &patch);
+            FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, true, false, 100, 100, true, 10, &patch);
             for (auto &pair : patch)
             {
                 std::unordered_set<typename MeshType::Vertex_handle> vertex_to_smooth;
@@ -273,20 +313,10 @@ public:
                 }
                 CGAL::Polygon_mesh_processing::fair(
                     mesh, std::vector<typename MeshType::Vertex_handle>(vertex_to_smooth.begin(), vertex_to_smooth.end()));
-                // std::unordered_set<typename MeshType::Facet_handle> facet_to_smooth;
-                // for(auto hf : pair.second)
-                // {
-                //     facet_to_smooth.insert(hf);
-                //     for(auto nei : CGAL::faces_around_face(hf->halfedge(), mesh))
-                //     {
-                //         facet_to_smooth.insert(nei);
-                //     }
-                // }
-                // CGAL::Polygon_mesh_processing::angle_and_area_smoothing<MeshType, std::vector<typename MeshType::Facet_handle>>(
-                //     std::vector<typename MeshType::Facet_handle>(facet_to_smooth.begin(), facet_to_smooth.end()), mesh,
-                //     CGAL::parameters::do_project(false).number_of_iterations(10));
             }
+            mesh.UpdateFaceLabels();
             mesh.WriteOBJ("deformed_step" + std::to_string(step) + ".obj");
+            mesh.WriteLabels("deformed_step" + std::to_string(step) + ".json");
             printf("finishing...");
         }
     }
