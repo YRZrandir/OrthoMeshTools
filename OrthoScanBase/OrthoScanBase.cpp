@@ -138,7 +138,7 @@ void GenerateBase2(Polyhedron &mesh)
     }
     using LA = CGAL::Eigen_solver_traits<Eigen::SimplicialLDLT<typename CGAL::Eigen_sparse_matrix<double>::EigenType>>;
     using HeatMethod = CGAL::Heat_method_3::Surface_mesh_geodesic_distances_3<Polyhedron, CGAL::Heat_method_3::Intrinsic_Delaunay,
-                                                                              typename boost::property_map<Polyhedron, CGAL::vertex_point_t>::const_type, LA, Polyhedron::Traits::Kernel>;
+                                                                              typename boost::property_map<Polyhedron, CGAL::vertex_point_t>::const_type, LA, Polyhedron::Traits::Kernel>;    
     std::unordered_map<typename Polyhedron::Vertex_handle, double> distances;
     HeatMethod heat_method(mesh);
 
@@ -155,7 +155,7 @@ void GenerateBase2(Polyhedron &mesh)
     }
     heat_method.add_sources(sources);
     heat_method.estimate_geodesic_distances(boost::make_assoc_property_map(distances));
-
+    
     std::unordered_set<typename Polyhedron::Facet_handle> face_to_remove;
     for (auto hv : CGAL::vertices(mesh))
     {
@@ -206,6 +206,7 @@ void GenerateBase2(Polyhedron &mesh)
         hole_edges.push_back(hh);
     }
     std::vector<Polyhedron::Halfedge_handle> new_edges;
+    std::vector<Polyhedron::Facet_handle> new_faces;
     auto h = hole_edges[0];
     auto g = hole_edges[1];
     for (size_t i = 0; i < hole_edges.size(); i++)
@@ -217,19 +218,92 @@ void GenerateBase2(Polyhedron &mesh)
         h = ret->opposite();
         g = h->next();
         new_edges.push_back(ret->next()->opposite());
+        new_faces.push_back(ret->facet());
     }
 
     h = new_edges.front();
     g = h->next()->next();
     for (size_t i = 0; i < new_edges.size(); i++)
     {
-        h = mesh.add_facet_to_border(h, g)->opposite();
+        auto ret = mesh.add_facet_to_border(h, g);
+        h = ret->opposite();
         g = h->next()->next();
+        new_faces.push_back(ret->facet());
+    }
+
+    std::vector<Polyhedron::Vertex_handle> hole_vertices;
+    for(auto hh : CGAL::halfedges_around_face(h, mesh))
+    {
+        hole_vertices.push_back(hh->vertex());
+    }
+    {
+        for(int ite = 0; ite < 3; ite++)
+        {
+            std::vector<Polyhedron::Traits::Kernel::Point_3> new_points;
+            for(size_t i = 0; i < hole_vertices.size(); i++)
+            {
+                size_t prev = i == 0 ? hole_vertices.size() - 1 : i - 1;
+                size_t next = (i + 1) % hole_vertices.size();
+                new_points.push_back(CGAL::midpoint(hole_vertices[prev]->point(), hole_vertices[next]->point()));
+            }
+            for(size_t i = 0; i < hole_vertices.size(); i++)
+            {
+                hole_vertices[i]->point() = new_points[i];
+            }
+        }
+    }
+
+    double target_len = 0.0;
+    int cnt = 0;
+    for(auto hh : CGAL::halfedges_around_face(h, mesh))
+    {
+        target_len += std::sqrt(CGAL::squared_distance(hh->vertex()->point(), hh->next()->vertex()->point()));
+        cnt++;
+    }
+    target_len = target_len / cnt * 4.0;
+    std::unordered_set<Polyhedron::Facet_handle> old_faces;
+    for(auto hf : CGAL::faces(mesh))
+        old_faces.insert(hf);
+    CGAL::Polygon_mesh_processing::isotropic_remeshing(new_faces, target_len, mesh, CGAL::parameters::relax_constraints(true).number_of_relaxation_steps(3).number_of_iterations(3));
+
+    std::unordered_set<Polyhedron::Vertex_handle> vertex_to_fair;
+    new_faces.clear();
+    for(auto hf : CGAL::faces(mesh))
+    {
+        if(old_faces.count(hf) == 0)
+        {
+            new_faces.push_back(hf);
+            for(auto hh : CGAL::halfedges_around_face(hf->halfedge(), mesh))
+                vertex_to_fair.insert(hh->vertex());
+        }
+    }
+    for(auto hf : new_faces)
+    {
+        for(auto hh : CGAL::halfedges_around_face(hf->halfedge(), mesh))
+        {
+            if(hh->opposite()->is_border())
+                vertex_to_fair.erase(hh->vertex());
+        }
+    }
+    CGAL::Polygon_mesh_processing::fair(mesh, std::vector<Polyhedron::Vertex_handle>(vertex_to_fair.begin(), vertex_to_fair.end()), CGAL::parameters::number_of_iterations(1));
+
+    Polyhedron::Halfedge_handle hole_hh = nullptr;
+    for(auto hf : new_faces)
+    {
+        for(auto hh : CGAL::halfedges_around_face(hf->halfedge(), mesh))
+        {
+            if(hh->opposite()->is_border())
+            {
+                hole_hh = hh->opposite();
+                break;
+            }
+        }
+        if(hole_hh != nullptr)
+            break;
     }
     std::vector<Polyhedron::Facet_handle> patch_faces;
     std::vector<Polyhedron::Vertex_handle> patch_vertex;
-    CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(mesh, h, std::back_inserter(patch_faces), std::back_inserter(patch_vertex));
-
+    CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(mesh, hole_hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertex));
     for (auto hv : patch_vertex)
     {
         hv->_label = 1;
@@ -262,37 +336,68 @@ void Optimize(Polyhedron &mesh)
         }
     };
     double avg_area = 0.0;
+    double avg_len = 0.0;
     for(auto hf : CGAL::faces(mesh))
     {
-        avg_area += std::sqrt(CGAL::squared_area(hf->halfedge()->vertex()->point(), hf->halfedge()->next()->vertex()->point(), hf->halfedge()->next()->next()->vertex()->point()));
+        auto p0 = hf->halfedge()->vertex()->point();
+        auto p1 = hf->halfedge()->next()->vertex()->point();
+        auto p2 = hf->halfedge()->next()->next()->vertex()->point();
+        avg_area += std::sqrt(CGAL::squared_area(p0, p1, p2));
+        avg_len += std::sqrt(CGAL::squared_distance(p0, p1));
+        avg_len += std::sqrt(CGAL::squared_distance(p0, p2));
+        avg_len += std::sqrt(CGAL::squared_distance(p1, p2));
     }
     avg_area /= mesh.size_of_facets();
+    avg_len /= mesh.size_of_halfedges();
 
-    std::vector<typename Polyhedron::Facet_handle> faces_to_split;
+    std::unordered_set<typename Polyhedron::Facet_handle> faces_to_split;
+    double threshold = avg_len * avg_len * 16;
     for(auto hf : CGAL::faces(mesh))
     {
         if(hf->halfedge()->vertex()->_label == 0 && hf->halfedge()->next()->vertex()->_label == 0 && hf->halfedge()->next()->next()->vertex()->_label == 0)
         {
-            double area = std::sqrt(CGAL::squared_area(hf->halfedge()->vertex()->point(), hf->halfedge()->next()->vertex()->point(), hf->halfedge()->next()->next()->vertex()->point()));
-            if(area > avg_area * 4)
+            auto p0 = hf->halfedge()->vertex()->point();
+            auto p1 = hf->halfedge()->next()->vertex()->point();
+            auto p2 = hf->halfedge()->next()->next()->vertex()->point();
+            if(CGAL::squared_distance(p0, p1) > threshold || CGAL::squared_distance(p0, p2) > threshold || CGAL::squared_distance(p1, p2) > threshold)
             {
-                faces_to_split.push_back(hf);
+                faces_to_split.insert(hf);
             }
         }
     }
 
-    std::vector<typename Polyhedron::Facet_handle> new_faces;
-    std::vector<typename Polyhedron::Vertex_handle> new_vertices;
-    CGAL::Polygon_mesh_processing::refine(mesh, faces_to_split, std::back_inserter(new_faces), std::back_inserter(new_vertices));
-    for(auto hv : new_vertices)
+    std::vector<std::vector<typename Polyhedron::Facet_handle>> face_patches;
+    while(!faces_to_split.empty())
     {
-        hv->_label = 0;
+        auto ff = *faces_to_split.begin();
+        faces_to_split.erase(ff);
+        face_patches.emplace_back();
+        std::queue<typename Polyhedron::Facet_handle> q;
+        q.push(ff);
+        while(!q.empty())
+        {
+            auto hf = q.front();
+            q.pop();
+            face_patches.back().push_back(hf);
+            for(auto nei : CGAL::faces_around_face(hf->halfedge(), mesh))
+            {
+                if(faces_to_split.count(nei) != 0)
+                {
+                    q.push(nei);
+                    faces_to_split.erase(nei);
+                }
+            }
+        }
+    }
+    std::cout << "processing " << face_patches.size() << " patches.";
+    for(auto& patch : face_patches)
+    {
+        CGAL::Polygon_mesh_processing::isotropic_remeshing(patch, avg_len * 2, mesh, CGAL::parameters::number_of_iterations(1));
     }
 }
 
 int main(int argc, char *argv[])
 {
-
     argparse::ArgumentParser parser;
     parser.add_argument("--input_file", "-i").required().help("");
     parser.add_argument("--input_label", "-l").required().help("");
@@ -303,8 +408,19 @@ int main(int argc, char *argv[])
     Polyhedron mesh;
     CGAL::IO::read_polygon_mesh(parser.get("-i"), mesh, CGAL::parameters::verbose(true));
     mesh.LoadLabels(parser.get("-l"));
-    Optimize(mesh);
-    GenerateBase2(mesh);
+    try
+    {
+        std::cout << "Optimizing...";
+        Optimize(mesh);
+        std::cout << "Done" << std::endl;
+        std::cout << "Generating...";
+        GenerateBase2(mesh);
+        std::cout << "Done" << std::endl;
+    }
+    catch(const std::exception& e)
+    {
+        std::cout << e.what() << std::endl;
+    }
 
     mesh.WriteOBJ(parser.get("-o"));
     mesh.WriteLabels(parser.get("-ol"));
