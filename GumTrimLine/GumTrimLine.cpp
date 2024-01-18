@@ -209,7 +209,7 @@ namespace
     void LabelProcessing(Polyhedron& mesh)
     {
         auto aabb = CGAL::bbox_3(mesh.points_begin(), mesh.points_end());
-        double threshold = std::max(aabb.x_span(), std::max(aabb.y_span(), aabb.z_span())) / 100.0;
+        double threshold = std::max(aabb.x_span(), std::max(aabb.y_span(), aabb.z_span())) / 150.0;
         
         std::unordered_map<hVertex, int> new_label_set;
         for(auto hv : CGAL::vertices(mesh))
@@ -599,7 +599,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
     {
         final_curve.FixAllCurve(aabb_tree, fix_factor);
     }
-    for (size_t iteration = 0; iteration < 0; iteration++)
+    for (size_t iteration = 0; iteration < 1; iteration++)
     {
         std::vector<Point_3> new_points = final_curve.GetPoints();
         for (size_t i = 0; i < new_points.size(); i++)

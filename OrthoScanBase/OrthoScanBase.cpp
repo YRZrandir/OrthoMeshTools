@@ -116,7 +116,13 @@ void GenerateBase2(Polyhedron &mesh)
             upper = false;
             break;
         }
+        if(hv->_label >= 11 && hv->_label <= 29)
+        {
+            upper = true;
+            break;
+        }
     }
+    std::cout << "Computing principle axis...";
     KernelEpick::Point_3 centroid;
     KernelEpick::Plane_3 plane;
     CGAL::linear_least_squares_fitting_3(mesh.points_begin(), mesh.points_end(), plane, centroid, CGAL::Dimension_tag<0>());
@@ -137,6 +143,8 @@ void GenerateBase2(Polyhedron &mesh)
         proj_min = std::min(proj_min, proj);
         proj_max = std::max(proj_max, proj);
     }
+
+    std::cout << "Computing geodesic distance...";
     using LA = CGAL::Eigen_solver_traits<Eigen::SimplicialLDLT<typename CGAL::Eigen_sparse_matrix<double>::EigenType>>;
     using HeatMethod = CGAL::Heat_method_3::Surface_mesh_geodesic_distances_3<Polyhedron, CGAL::Heat_method_3::Intrinsic_Delaunay,
                                                                               typename boost::property_map<Polyhedron, CGAL::vertex_point_t>::const_type, LA, Polyhedron::Traits::Kernel>;    
@@ -157,13 +165,14 @@ void GenerateBase2(Polyhedron &mesh)
     heat_method.add_sources(sources);
     heat_method.estimate_geodesic_distances(boost::make_assoc_property_map(distances));
     
+    std::cout << "Erasing faces...";
     std::unordered_set<typename Polyhedron::Facet_handle> face_to_remove;
     for (auto hv : CGAL::vertices(mesh))
     {
         int l = hv->_label;
         if (!(l >= 11 && l <= 29 || l >= 31 && l <= 49))
         {
-            if (distances[hv] > (proj_max - proj_min) * 0.2)
+            if (distances[hv] > (proj_max - proj_min) * 0.05)
             {
                 for (auto hf : CGAL::faces_around_target(hv->halfedge(), mesh))
                 {
@@ -175,13 +184,17 @@ void GenerateBase2(Polyhedron &mesh)
 
     for (auto hf : face_to_remove)
     {
-        mesh.erase_facet(hf->halfedge());
+        if(hf != nullptr && hf->halfedge() != nullptr && !hf->halfedge()->is_border())
+        {
+            mesh.erase_facet(hf->halfedge());
+        }
     }
 
     auto [vertices, faces] = mesh.ToVerticesTriangles();
     FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, false, true, 0, 0, false, 10);
 
     // Add base mesh
+    std::cout << "Building mesh...";
     std::vector<Polyhedron::Halfedge_handle> borders;
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(mesh, std::back_inserter(borders));
 
@@ -265,6 +278,8 @@ void GenerateBase2(Polyhedron &mesh)
     std::unordered_set<Polyhedron::Facet_handle> old_faces;
     for(auto hf : CGAL::faces(mesh))
         old_faces.insert(hf);
+    
+    std::cout << "Remeshing..." << std::endl;
     CGAL::Polygon_mesh_processing::isotropic_remeshing(new_faces, target_len, mesh, CGAL::parameters::relax_constraints(true).number_of_relaxation_steps(3).number_of_iterations(3));
     std::unordered_set<Polyhedron::Vertex_handle> vertex_to_fair;
     new_faces.clear();
@@ -335,7 +350,7 @@ void Optimize(Polyhedron &mesh)
         {
         }
     };
-    CGAL::Polygon_mesh_processing::remove_almost_degenerate_faces(mesh, CGAL::parameters::needle_threshold(100).cap_threshold(std::cos(3.14159 / 2 * 0.9)));
+    CGAL::Polygon_mesh_processing::remove_almost_degenerate_faces(mesh, CGAL::parameters::needle_threshold(100).cap_threshold(std::cos(3.14159 * 0.9)));
     double avg_area = 0.0;
     double avg_len = 0.0;
     for(auto hf : CGAL::faces(mesh))
@@ -417,10 +432,10 @@ int main(int argc, char *argv[])
     {
         std::cout << "Optimizing...";
         Optimize(mesh);
-        std::cout << "Done" << std::endl;
+        std::cout << "Done." << std::endl;
         std::cout << "Generating...";
         GenerateBase2(mesh);
-        std::cout << "Done" << std::endl;
+        std::cout << "Done." << std::endl;
     }
     catch(const std::exception& e)
     {
