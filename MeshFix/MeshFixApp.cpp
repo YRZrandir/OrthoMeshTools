@@ -5,103 +5,40 @@ extern bool gVerbose;
 
 int main(int argc, char* argv[])
 {
-    auto print_help_msg = []()
-    {
-        std::cout << "usage:\n"
-        "\t-i filename \tPath to input mesh.\n"
-        "\t-o filename \tFile name of output mesh.\n"
-        "\t-k threshold\tDelete connected components smaller than threshold (default=off)\n"
-        "\t-s \tFix self intersection\n"
-        "\t-f max_hole_edges max_hole_diam\t Do not fill holes that satisfiy (edge number > max_hole_edges) OR (AABB size > max_hole_diam)\n"
-        "\t-r refine after filling holes.\n"
-        "\t-m max_retry The program will repeatedly try to fix the mesh, this is the max retry time. (default=10)"
-        "\t-v \tPrint debug messages" << std::endl;
-    };
-    if(argc < 2 || strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0)
-    {
-        print_help_msg();
-        return -1;
-    }
     argparse::ArgumentParser argparse("MeshFix");
     argparse.add_argument("--input", "-i").required().help("specify the input mesh file");
     argparse.add_argument("--output", "-o").required().help("specify the output mesh file");
     argparse.add_argument("--input_label", "-li").help("specify the input label file");
     argparse.add_argument("--output_label", "-lo").help("specify the output label file");
-    argparse.add_argument("--remove_small_components", "-k").help("").nargs(1).scan<'g', double>().default_value(0);
-    argparse.add_argument("--fix_self_intersection").flag();
-    argparse.add_argument("--filter_small_holes", "-f").help("").nargs(2).default_value(std::pair<int, double>(0, 0.0));
-    argparse.add_argument("--refine", "-r").help("").flag();
-    argparse.add_argument("--max_retry", "-m").help("").scan<'i', int>().default_value(10);
-    
-    std::string path;
-    std::string output_path;
-    std::string input_label;
-    std::string output_label;
-    bool keep_largest_connected_component = false;
-    int large_cc_threshold = 100;
-    bool fix_self_intersection = false;
-    bool filter_small_holes = false;
-    int max_hole_edges = std::numeric_limits<int>::max();
-    float max_hole_diam = std::numeric_limits<float>::max();
-    bool refine = false;
-    int max_retry = 10;
-
-    for(int i = 1; i < argc; i++)
+    argparse.add_argument("--small_component_threshold", "-sc").help("connected components whose size is smaller than the value are removed.").nargs(1).scan<'i', int>().default_value(0);
+    argparse.add_argument("--fix_self_intersection").flag().help("detect and remove self-intersecting faces.");
+    argparse.add_argument("--smallhole_edge_num", "-sh").help("holes whose edge number is larger than the value are filled.").nargs(1).scan<'i', int>().default_value(0);
+    argparse.add_argument("--smallhole_size", "-ss").help("holes whose edge bounding box larger than the value are filled.").nargs(1).scan<'f', float>().default_value(0.0f);
+    argparse.add_argument("--refine", "-r").help("refine the filled holes.").flag();
+    argparse.add_argument("--max_retry", "-m").help("max retry number to fix the mesh.").scan<'i', int>().default_value(10);
+    try
     {
-        if(strcmp(argv[i], "-i") == 0)
-        {
-            path = std::string(argv[i + 1]);
-        }
-        else if (strcmp(argv[i], "-o") == 0)
-        {
-            output_path = std::string(argv[i + 1]);
-        }
-        else if (strcmp(argv[i], "-v") == 0)
-        {
-            gVerbose = true;
-        }
-        else if (strcmp(argv[i], "-k") == 0)
-        {
-            keep_largest_connected_component = true;
-            if(i < argc - 1 && std::atoi(argv[i+1]) != 0)
-            {
-                large_cc_threshold = std::atoi(argv[i + 1]);
-            }
-        }
-        else if (strcmp(argv[i], "-s") == 0)
-        {
-            fix_self_intersection = true;
-        }
-        else if (strcmp(argv[i], "-f") == 0)
-        {
-            filter_small_holes = true;
-            max_hole_edges = std::atoi(argv[i+1]);
-            max_hole_diam = static_cast<float>(std::atof(argv[i+2]));
-        }
-        else if (strcmp(argv[i], "-r") == 0)
-        {
-            refine = true;
-        }
-        else if (strcmp(argv[i], "-m") == 0)
-        {
-            max_retry = std::atoi(argv[i+1]);
-        }
-        else if (strcmp(argv[i], "-li") == 0)
-        {
-            input_label = std::string(argv[i + 1]);
-        }
-        else if (strcmp(argv[i], "-lo") == 0)
-        {
-            output_label = std::string(argv[i + 1]);
-        }
+        argparse.parse_args(argc, argv);
     }
-    if(path.empty() || output_path.empty())
+    catch(const std::exception& e)
     {
-        print_help_msg();
+        std::cout << e.what() << std::endl;
         return -1;
     }
     try
     {
+        std::string path = argparse.get("-i");
+        std::string output_path = argparse.get("-o");
+        std::string input_label = argparse.present("-li").value_or("");
+        std::string output_label = argparse.present("-lo").value_or("");
+        int large_cc_threshold = argparse.get<int>("--small_component_threshold");
+        bool keep_largest_connected_component = large_cc_threshold == 0;
+        bool fix_self_intersection = argparse.get<bool>("--fix_self_intersection");
+        int smallhole_edge_num = argparse.get<int>("--smallhole_edge_num");
+        float smallhole_size = argparse.get<float>("--smallhole_size");
+        bool filter_small_holes = smallhole_edge_num <= 2 && smallhole_size <= 0.0;
+        bool refine = argparse.get<bool>("--refine");
+        int max_retry = argparse.get<int>("--max_retry");
         if(!input_label.empty() && !output_label.empty())
         {
             FixMeshFileWithLabel(
@@ -113,8 +50,8 @@ int main(int argc, char* argv[])
                 large_cc_threshold,
                 fix_self_intersection, 
                 filter_small_holes, 
-                max_hole_edges, 
-                max_hole_diam, 
+                smallhole_edge_num, 
+                smallhole_size, 
                 refine,
                 max_retry
             );
@@ -128,8 +65,8 @@ int main(int argc, char* argv[])
                 large_cc_threshold,
                 fix_self_intersection, 
                 filter_small_holes, 
-                max_hole_edges, 
-                max_hole_diam, 
+                smallhole_edge_num, 
+                smallhole_size, 
                 refine,
                 max_retry
             );
