@@ -12,7 +12,8 @@
 #include <CGAL/Vector_3.h>
 #include "../Polyhedron.h"
 #include "../MeshFix/MeshFix.h"
-
+#include "../EasyOBJ.h"
+//#define DEBUG_ORTHOSCANBASE
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
 using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
 
@@ -146,7 +147,7 @@ void GenerateBase2(Polyhedron &mesh)
 
     std::cout << "Computing geodesic distance...";
     using LA = CGAL::Eigen_solver_traits<Eigen::SimplicialLDLT<typename CGAL::Eigen_sparse_matrix<double>::EigenType>>;
-    using HeatMethod = CGAL::Heat_method_3::Surface_mesh_geodesic_distances_3<Polyhedron, CGAL::Heat_method_3::Intrinsic_Delaunay,
+    using HeatMethod = CGAL::Heat_method_3::Surface_mesh_geodesic_distances_3<Polyhedron, CGAL::Heat_method_3::Direct,
                                                                               typename boost::property_map<Polyhedron, CGAL::vertex_point_t>::const_type, LA, Polyhedron::Traits::Kernel>;    
     std::unordered_map<typename Polyhedron::Vertex_handle, double> distances;
     HeatMethod heat_method(mesh);
@@ -162,6 +163,14 @@ void GenerateBase2(Polyhedron &mesh)
             }
         }
     }
+    // for(auto hv : CGAL::vertices(mesh))
+    // {
+    //     if(hv->_label != 0 && hv->_label != 1)
+    //     {
+    //         sources.push_back(hv);
+    //     }
+    // }
+
     heat_method.add_sources(sources);
     heat_method.estimate_geodesic_distances(boost::make_assoc_property_map(distances));
     
@@ -172,7 +181,12 @@ void GenerateBase2(Polyhedron &mesh)
         int l = hv->_label;
         if (!(l >= 11 && l <= 29 || l >= 31 && l <= 49))
         {
-            if (distances[hv] > (proj_max - proj_min) * 0.05)
+            double dist = std::numeric_limits<double>::max();
+            if(distances.find(hv) != distances.end())
+            {
+                dist = distances[hv];
+            }
+            if (dist > (proj_max - proj_min) * 0.05)
             {
                 for (auto hf : CGAL::faces_around_target(hv->halfedge(), mesh))
                 {
@@ -182,6 +196,20 @@ void GenerateBase2(Polyhedron &mesh)
         }
     }
 
+    // {
+    //     EasyOBJ obj("patch.obj");
+    //     for(auto hf : face_to_remove)
+    //     {
+    //         auto p0 = hf->halfedge()->vertex()->point();
+    //         auto p1 = hf->halfedge()->next()->vertex()->point();
+    //         auto p2 = hf->halfedge()->next()->next()->vertex()->point();
+    //         auto i0 = obj.AddV(p0);
+    //         auto i1 = obj.AddV(p1);
+    //         auto i2 = obj.AddV(p2);
+    //         obj.AddF(i0, i1, i2);
+    //     }
+    // }
+
     for (auto hf : face_to_remove)
     {
         if(hf != nullptr && hf->halfedge() != nullptr && !hf->halfedge()->is_border())
@@ -189,7 +217,9 @@ void GenerateBase2(Polyhedron &mesh)
             mesh.erase_facet(hf->halfedge());
         }
     }
-
+#ifdef DEBUG_ORTHOSCANBASE
+    mesh.WriteOBJ("cleaned.obj");
+#endif
     auto [vertices, faces] = mesh.ToVerticesTriangles();
     FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, false, true, 0, 0, false, 10);
 
@@ -371,9 +401,12 @@ void Optimize(Polyhedron &mesh)
     for(auto hf : CGAL::faces(mesh))
     {
         int cnt = 0;
-        if(hf->halfedge()->vertex()->_label == 0) cnt++;
-        if(hf->halfedge()->next()->vertex()->_label == 0) cnt++;
-        if(hf->halfedge()->next()->next()->vertex()->_label == 0) cnt++;
+        int l0 = hf->halfedge()->vertex()->_label;
+        int l1 = hf->halfedge()->next()->vertex()->_label;
+        int l2 = hf->halfedge()->next()->next()->vertex()->_label;
+        if(l0 == 0 || l0 % 10 == 8) cnt++;
+        if(l1 == 0 || l1 % 10 == 8) cnt++;
+        if(l2 == 0 || l2 % 10 == 8) cnt++;
         if(cnt >= 1)
         {
             auto p0 = hf->halfedge()->vertex()->point();
@@ -414,6 +447,7 @@ void Optimize(Polyhedron &mesh)
     {
         CGAL::Polygon_mesh_processing::isotropic_remeshing(patch, avg_len * 2, mesh, CGAL::parameters::number_of_iterations(1));
     }
+    mesh.UpdateFaceLabels();
 }
 
 int main(int argc, char *argv[])
@@ -433,6 +467,9 @@ int main(int argc, char *argv[])
         std::cout << "Optimizing...";
         Optimize(mesh);
         std::cout << "Done." << std::endl;
+#ifdef DEBUG_ORTHOSCANBASE
+        mesh.WriteOBJ("optimized.obj");
+#endif
         std::cout << "Generating...";
         GenerateBase2(mesh);
         std::cout << "Done." << std::endl;

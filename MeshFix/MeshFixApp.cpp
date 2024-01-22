@@ -12,8 +12,8 @@ int main(int argc, char* argv[])
     argparse.add_argument("--output_label", "-lo").help("specify the output label file");
     argparse.add_argument("--small_component_threshold", "-sc").help("connected components whose size is smaller than the value are removed.").nargs(1).scan<'i', int>().default_value(0);
     argparse.add_argument("--fix_self_intersection").flag().help("detect and remove self-intersecting faces.");
-    argparse.add_argument("--smallhole_edge_num", "-sh").help("holes whose edge number is larger than the value are filled.").nargs(1).scan<'i', int>().default_value(0);
-    argparse.add_argument("--smallhole_size", "-ss").help("holes whose edge bounding box larger than the value are filled.").nargs(1).scan<'f', float>().default_value(0.0f);
+    argparse.add_argument("--smallhole_edge_num", "-sh").help("holes whose edge number is smaller than the value are closed.").nargs(1).scan<'i', int>().default_value(0);
+    argparse.add_argument("--smallhole_size", "-ss").help("holes whose edge bounding box smaller than the value are closed.").nargs(1).scan<'f', float>().default_value(0.0f);
     argparse.add_argument("--refine", "-r").help("refine the filled holes.").flag();
     argparse.add_argument("--max_retry", "-m").help("max retry number to fix the mesh.").scan<'i', int>().default_value(10);
     try
