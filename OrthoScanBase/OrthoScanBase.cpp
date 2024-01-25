@@ -1,6 +1,7 @@
 #include <iostream>
 #include <argparse/argparse.hpp>
 #include <CGAL/boost/graph/io.h>
+#include <CGAL/boost/graph/Face_filtered_graph.h>
 #include <CGAL/Eigen_solver_traits.h>
 #include <CGAL/Heat_method_3/Surface_mesh_geodesic_distances_3.h>
 #include <CGAL/linear_least_squares_fitting_3.h>
@@ -9,6 +10,7 @@
 #include <CGAL/Polygon_mesh_processing/remesh.h>
 #include <CGAL/Polygon_mesh_processing/refine.h>
 #include <CGAL/Polygon_mesh_processing/repair_degeneracies.h>
+#include <CGAL/Surface_mesh_deformation.h>
 #include <CGAL/Vector_3.h>
 #include "../Polyhedron.h"
 #include "../MeshFix/MeshFix.h"
@@ -329,7 +331,7 @@ void GenerateBase2(Polyhedron &mesh)
                 vertex_to_fair.erase(hh->vertex());
         }
     }
-    CGAL::Polygon_mesh_processing::fair(mesh, std::vector<Polyhedron::Vertex_handle>(vertex_to_fair.begin(), vertex_to_fair.end()), CGAL::parameters::number_of_iterations(1));
+    CGAL::Polygon_mesh_processing::fair(mesh, std::vector<Polyhedron::Vertex_handle>(vertex_to_fair.begin(), vertex_to_fair.end()));
 
     Polyhedron::Halfedge_handle hole_hh = nullptr;
     for(auto hf : new_faces)
@@ -448,6 +450,150 @@ void Optimize(Polyhedron &mesh)
     mesh.UpdateFaceLabels();
 }
 
+void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Polyhedron& mesh)
+{
+    std::cout << "Creating gum..." << std::endl;
+    // Here we remove tooth mesh one by one, in this way it creates smaller hole which are easier to close.
+    int start_label = upper ? 11 : 31;
+    int end_label = upper ? 29 : 49;
+    for(int label = start_label; label < end_label; label++)
+    {
+        std::unordered_set<Polyhedron::Facet_handle> face_to_remove;
+        for(auto hf : CGAL::faces(mesh))
+        {
+            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh))
+            {
+                if(hv->_label == label)
+                {
+                    face_to_remove.insert(hf);
+                    break;
+                }
+            }
+        }
+        if(face_to_remove.empty())
+        {
+            continue;
+        }
+
+        for(auto hf : face_to_remove)
+        {
+            if(hf != nullptr && hf->halfedge() != nullptr && !hf->halfedge()->is_border())
+            {
+                mesh.erase_facet(hf->halfedge());
+            }
+        }
+
+        auto [V, F] = mesh.ToVerticesTriangles();
+        std::vector<std::pair<std::vector<Polyhedron::Vertex_handle>, std::vector<Polyhedron::Facet_handle>>> patches;
+        FixMeshWithLabel(V, F, mesh.WriteLabels(), mesh, true, 999, false, false, 99999999, 99999999.0f, true, 10, &patches);
+        for(auto& [patch_vertices, patch_faces] : patches)
+        {
+            for(auto hf : patch_faces)
+                hf->_label = 2;
+            for(auto hv : patch_vertices)
+                hv->_label = 2;
+        }
+    }
+
+    std::vector<typename Polyhedron::Vertex_handle> vertex_to_fair;
+    for(auto hv : CGAL::vertices(mesh))
+        if(hv->_label == 2)
+            vertex_to_fair.push_back(hv);
+
+    CGAL::Polygon_mesh_processing::fair(mesh, vertex_to_fair);
+
+    std::unordered_set<typename Polyhedron::Facet_handle> filter_faces;
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(hv->_label == 2)
+            for(auto nei : CGAL::faces_around_target(hv->halfedge(), mesh))
+                filter_faces.insert(nei);
+    }
+    CGAL::Face_filtered_graph<Polyhedron> filtered_graph(mesh, filter_faces);
+    Polyhedron filtered_mesh;
+    std::unordered_map<typename Polyhedron::Vertex_handle, typename Polyhedron::Vertex_handle> v_to_v_map;
+    std::unordered_map<typename Polyhedron::Facet_handle, typename Polyhedron::Facet_handle> f_to_f_map;
+    CGAL::copy_face_graph(filtered_graph, filtered_mesh, 
+        CGAL::parameters::vertex_to_vertex_map(boost::make_assoc_property_map(v_to_v_map)).face_to_face_map(boost::make_assoc_property_map(f_to_f_map)));
+    for(auto& [src, tar] : v_to_v_map)
+        tar->_label = src->_label;
+    for(auto& [src, tar] : f_to_f_map)
+        tar->_label = src->_label;
+
+    using LA = CGAL::Eigen_solver_traits<Eigen::SimplicialLDLT<typename CGAL::Eigen_sparse_matrix<double>::EigenType>>;
+    using HeatMethod = CGAL::Heat_method_3::Surface_mesh_geodesic_distances_3<Polyhedron, CGAL::Heat_method_3::Direct,
+                                                                            typename boost::property_map<Polyhedron, CGAL::vertex_point_t>::const_type, LA, Polyhedron::Traits::Kernel>;    
+    std::unordered_map<typename Polyhedron::Vertex_handle, double> distances;
+    HeatMethod heat_method(filtered_mesh);
+    for(auto hv : CGAL::vertices(filtered_mesh))
+        if(hv->_label != 2)
+            heat_method.add_source(hv);
+    heat_method.estimate_geodesic_distances(boost::make_assoc_property_map(distances));
+
+    CrownFrames<KernelEpick> crown_frames(crown_frame);
+    std::vector<typename Polyhedron::Vertex_handle> roi_vertices;
+    for(auto hv : CGAL::vertices(mesh))
+        if(hv->_label == 2)
+            roi_vertices.push_back(hv);
+
+    std::unordered_map<typename Polyhedron::Vertex_handle, typename Polyhedron::Point_3> control_vertices_map;
+    std::vector<typename Polyhedron::Vertex_handle> control_vertices;
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(hv->_label == 2)
+        {
+            double min_dist = std::numeric_limits<double>::max();
+            std::vector<std::pair<int, double>> frame_weights;
+            for(const auto& frame : crown_frames.Frames())
+            {
+                if(upper == (frame.first >= 11 && frame.first <= 29))
+                {
+                    double dist = std::sqrt(CGAL::squared_distance(KernelEpick::Line_3(frame.second.pos, frame.second.up), hv->point()));
+                    if(dist == 0.0)
+                        dist = 1e-9; // avoid divide by 0
+                    frame_weights.push_back({frame.first, dist});
+                }
+            }
+            std::sort(frame_weights.begin(), frame_weights.end(), [](auto& l, auto& r){ return l.second < r.second; });
+            if(frame_weights.size() > 1 && std::abs(frame_weights[0].second - frame_weights[1].second) < 0.8)
+            {
+                hv->_label = 3;
+                continue;
+            }
+            auto dir = crown_frames.GetFrame(frame_weights.front().first).up;
+            if(frame_weights.size() > 1)
+            {
+                double w0 = std::exp(-frame_weights[0].second * frame_weights[0].second);
+                double w1 = std::exp(-frame_weights[1].second * frame_weights[1].second);
+
+                dir = dir * w0 + crown_frames.GetFrame(frame_weights[1].first).up * w1;
+                dir /= (w0 + w1);
+                dir /= std::sqrt(dir.squared_length());
+            }
+            if(distances[v_to_v_map[hv]] > 0.0)
+            {
+                double x = distances[v_to_v_map[hv]];
+                double dist = 2 * (1.0 - std::exp(-x * x / 4.0));
+                control_vertices_map[hv] = hv->point() - dir * dist;
+                control_vertices.push_back(hv);
+                hv->_label = frame_weights[0].first;
+            }
+        }
+    }
+    
+    CGAL::Surface_mesh_deformation<Polyhedron, CGAL::Default, CGAL::Default> deformation(mesh);
+    deformation.insert_roi_vertices(roi_vertices.begin(), roi_vertices.end());
+    deformation.insert_control_vertices(control_vertices.begin(), control_vertices.end());
+    for(auto& [hv, pos] : control_vertices_map)
+    {
+        deformation.set_target_position(hv, pos);
+    }
+    deformation.deform(10, 1e-4);
+
+    mesh.WriteOBJ(output_gum);
+    std::cout << "Done." << std::endl;
+}
+
 int main(int argc, char *argv[])
 {
     argparse::ArgumentParser parser;
@@ -462,6 +608,17 @@ int main(int argc, char *argv[])
     Polyhedron mesh;
     CGAL::IO::read_polygon_mesh(parser.get("-i"), mesh, CGAL::parameters::verbose(true));
     mesh.LoadLabels(parser.get("-l"));
+    bool upper = true;
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(hv->_label >= 11 && hv->_label <= 29)
+            break;
+        else if(hv->_label >= 31 && hv->_label <= 49)
+        {
+            upper = false;
+            break;
+        }
+    }
     try
     {
         std::cout << "Optimizing...";
@@ -484,54 +641,7 @@ int main(int argc, char *argv[])
 
     if(parser.present("-g").has_value() && parser.present("-c").has_value())
     {
-        std::unordered_set<Polyhedron::Facet_handle> face_to_remove;
-        for(auto hf : CGAL::faces(mesh))
-        {
-            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh))
-            {
-                if(hv->_label >= 11 && hv->_label <= 49)
-                {
-                    face_to_remove.insert(hf);
-                    break;
-                }
-            }
-        }
-
-        for(auto hf : face_to_remove)
-        {
-            if(hf != nullptr && hf->halfedge() != nullptr && !hf->halfedge()->is_border())
-            {
-                mesh.erase_facet(hf->halfedge());
-            }
-        }
-
-        auto [V, F] = mesh.ToVerticesTriangles();
-        std::vector<std::pair<std::vector<Polyhedron::Vertex_handle>, std::vector<Polyhedron::Facet_handle>>> patches;
-        FixMesh(V, F, mesh, true, 999, false, false, 9999999, 9999999, true, 10, true, &patches);
-
-        CrownFrames<KernelEpick> crown_frames(parser.present("-c").value());
-
-        for(auto& [vertices, faces] : patches)
-        {
-            for(auto hv : vertices)
-            {
-                int nearest_frame = 0;
-                double min_dist = std::numeric_limits<double>::max();
-                for(const auto& frame : crown_frames.Frames())
-                {
-                    double dist = CGAL::squared_distance(KernelEpick::Line_3(frame.second.pos, frame.second.up), hv->point());
-                    if(dist < min_dist)
-                    {
-                        min_dist = dist;
-                        nearest_frame = frame.first;
-                    }
-                }
-                double sigmoid = 1.0 / (1.0 + std::exp(-min_dist));
-                hv->point() += -crown_frames.GetFrame(nearest_frame).up * sigmoid;
-            }
-        }
-
-        mesh.WriteOBJ(parser.present("-g").value());
+        GenerateGum(parser.present("-g").value(), parser.present("-c").value(), upper, mesh);
     }
     
     return 0;

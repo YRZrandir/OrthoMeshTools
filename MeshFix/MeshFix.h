@@ -365,6 +365,29 @@ void FixMesh(
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
                 CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(m, hh,
                  CGAL::parameters::face_output_iterator(std::back_inserter(patch_faces)).vertex_output_iterator(std::back_inserter(patch_vertices)).do_not_use_cubic_algorithm(true));
+                bool success = !patch_faces.empty();
+                if(!success)
+                {
+                    // relax the border edges and try again
+                    std::cout << "failed to close hole, smoothing & trying again." << std::endl;
+                    std::vector<typename Polyhedron::Halfedge_handle> borders(CGAL::halfedges_around_face(hh, m).begin(), CGAL::halfedges_around_face(hh, m).end());
+                    std::vector<typename Polyhedron::Point_3> points;
+                    for(auto edge : borders)
+                    {
+                        points.push_back(CGAL::midpoint(edge->next()->vertex()->point(), edge->prev()->vertex()->point()));
+                    }
+                    for(int i = 0; i < points.size(); i++)
+                    {
+                        borders[i]->vertex()->point() = points[i];
+                    }
+                    CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(m, hh,
+                        CGAL::parameters::face_output_iterator(std::back_inserter(patch_faces)).vertex_output_iterator(std::back_inserter(patch_vertices)).do_not_use_cubic_algorithm(true));
+                    success = !patch_faces.empty();
+                }
+                if(!success)
+                {
+                    std::cout << "Warning: failed to close hole." << std::endl;
+                }
                 if(patch != nullptr)
                 {
                     patch->emplace_back(std::move(patch_vertices), std::move(patch_faces));
