@@ -363,7 +363,8 @@ void FixMesh(
             {
                 std::vector<typename Polyhedron::Vertex_handle> patch_vertices;
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
-                CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(m, hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertices));
+                CGAL::Polygon_mesh_processing::triangulate_refine_and_fair_hole(m, hh,
+                 CGAL::parameters::face_output_iterator(std::back_inserter(patch_faces)).vertex_output_iterator(std::back_inserter(patch_vertices)).do_not_use_cubic_algorithm(true));
                 if(patch != nullptr)
                 {
                     patch->emplace_back(std::move(patch_vertices), std::move(patch_faces));
@@ -373,7 +374,8 @@ void FixMesh(
             {
                 std::vector<typename Polyhedron::Vertex_handle> patch_vertices;
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
-                CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(m, hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertices));
+                CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(m, hh, 
+                CGAL::parameters::face_output_iterator(std::back_inserter(patch_faces)).vertex_output_iterator(std::back_inserter(patch_vertices)).do_not_use_cubic_algorithm(true));
                 if(patch != nullptr)
                 {
                     patch->emplace_back(std::move(patch_vertices), std::move(patch_faces));
@@ -382,7 +384,8 @@ void FixMesh(
             else
             {
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
-                CGAL::Polygon_mesh_processing::triangulate_hole(m, hh, std::back_inserter(patch_faces));
+                CGAL::Polygon_mesh_processing::triangulate_hole(m, hh,
+                    CGAL::parameters::do_not_use_cubic_algorithm(true).face_output_iterator(std::back_inserter(patch_faces)));
             }
         }
     }
@@ -452,7 +455,8 @@ void FixMeshWithLabel(
             {
                 std::vector<typename Polyhedron::Vertex_handle> patch_vertices;
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
-                CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(m, hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertices));
+                CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(m, hh, 
+                    CGAL::parameters::face_output_iterator(std::back_inserter(patch_faces)).vertex_output_iterator(std::back_inserter(patch_vertices)));
 
                 // labels of patch vertices
                 std::unordered_set<typename Polyhedron::Vertex_handle> patch_vset(patch_vertices.begin(), patch_vertices.end());
@@ -481,7 +485,7 @@ void FixMeshWithLabel(
             else
             {
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
-                CGAL::Polygon_mesh_processing::triangulate_hole(m, hh, std::back_inserter(patch_faces));
+                CGAL::Polygon_mesh_processing::triangulate_hole(m, hh, CGAL::parameters::face_output_iterator(std::back_inserter(patch_faces)));
                 if(patch != nullptr)
                 {
                     patch->emplace_back(std::vector<typename Polyhedron::Vertex_handle>(), std::move(patch_faces));
