@@ -13,7 +13,6 @@
 #include "../Polyhedron.h"
 #include "../MeshFix/MeshFix.h"
 #include "../EasyOBJ.h"
-//#define DEBUG_ORTHOSCANBASE
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
 using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
 
@@ -99,8 +98,8 @@ void GenerateBase1(Polyhedron &mesh)
     }
     std::vector<Polyhedron::Facet_handle> patch_faces;
     std::vector<Polyhedron::Vertex_handle> patch_vertex;
-    CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(mesh, h, std::back_inserter(patch_faces), std::back_inserter(patch_vertex));
-
+    CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(mesh, h,
+        CGAL::parameters::face_output_iterator(std::back_inserter(patch_faces)).vertex_output_iterator(std::back_inserter(patch_vertex)));
     for (auto hv : patch_vertex)
     {
         hv->_label = 1;
@@ -348,7 +347,8 @@ void GenerateBase2(Polyhedron &mesh)
     }
     std::vector<Polyhedron::Facet_handle> patch_faces;
     std::vector<Polyhedron::Vertex_handle> patch_vertex;
-    CGAL::Polygon_mesh_processing::triangulate_hole(mesh, hole_hh, std::back_inserter(patch_faces));
+    CGAL::Polygon_mesh_processing::triangulate_hole(mesh, hole_hh,
+        CGAL::parameters::face_output_iterator(std::back_inserter(patch_faces)).vertex_output_iterator(std::back_inserter(patch_vertex)));
     for (auto hv : patch_vertex)
     {
         hv->_label = 1;
@@ -358,9 +358,7 @@ void GenerateBase2(Polyhedron &mesh)
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(mesh, std::back_inserter(borders));
     for (auto hh : borders)
     {
-        std::vector<Polyhedron::Facet_handle> patch_faces;
-        std::vector<Polyhedron::Vertex_handle> patch_vertex;
-        CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(mesh, hh, std::back_inserter(patch_faces), std::back_inserter(patch_vertex));
+        CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(mesh, hh);
     }
 }
 
@@ -457,6 +455,8 @@ int main(int argc, char *argv[])
     parser.add_argument("--input_label", "-l").required().help("specify the input labels.");
     parser.add_argument("--output_file", "-o").required().help("specify the output file.");
     parser.add_argument("--output_label", "-ol").required().help("specify the output labels.");
+    parser.add_argument("--output_gum", "-g").help("specify the output gum mesh file.");
+    parser.add_argument("--crown_frame", "-c").help("specify the crown frame file.");
     parser.parse_args(argc, argv);
 
     Polyhedron mesh;
@@ -481,5 +481,58 @@ int main(int argc, char *argv[])
 
     mesh.WriteOBJ(parser.get("-o"));
     mesh.WriteLabels(parser.get("-ol"));
+
+    if(parser.present("-g").has_value() && parser.present("-c").has_value())
+    {
+        std::unordered_set<Polyhedron::Facet_handle> face_to_remove;
+        for(auto hf : CGAL::faces(mesh))
+        {
+            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh))
+            {
+                if(hv->_label >= 11 && hv->_label <= 49)
+                {
+                    face_to_remove.insert(hf);
+                    break;
+                }
+            }
+        }
+
+        for(auto hf : face_to_remove)
+        {
+            if(hf != nullptr && hf->halfedge() != nullptr && !hf->halfedge()->is_border())
+            {
+                mesh.erase_facet(hf->halfedge());
+            }
+        }
+
+        auto [V, F] = mesh.ToVerticesTriangles();
+        std::vector<std::pair<std::vector<Polyhedron::Vertex_handle>, std::vector<Polyhedron::Facet_handle>>> patches;
+        FixMesh(V, F, mesh, true, 999, false, false, 9999999, 9999999, true, 10, true, &patches);
+
+        CrownFrames<KernelEpick> crown_frames(parser.present("-c").value());
+
+        for(auto& [vertices, faces] : patches)
+        {
+            for(auto hv : vertices)
+            {
+                int nearest_frame = 0;
+                double min_dist = std::numeric_limits<double>::max();
+                for(const auto& frame : crown_frames.Frames())
+                {
+                    double dist = CGAL::squared_distance(KernelEpick::Line_3(frame.second.pos, frame.second.up), hv->point());
+                    if(dist < min_dist)
+                    {
+                        min_dist = dist;
+                        nearest_frame = frame.first;
+                    }
+                }
+                double sigmoid = 1.0 / (1.0 + std::exp(-min_dist));
+                hv->point() += -crown_frames.GetFrame(nearest_frame).up * sigmoid;
+            }
+        }
+
+        mesh.WriteOBJ(parser.present("-g").value());
+    }
+    
     return 0;
 }
