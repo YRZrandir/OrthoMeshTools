@@ -11,6 +11,10 @@
 #include <CGAL/Polygon_mesh_processing/refine.h>
 #include <CGAL/Polygon_mesh_processing/repair_degeneracies.h>
 #include <CGAL/Surface_mesh_deformation.h>
+#include <CGAL/Surface_mesh_shortest_path.h>
+#include <CGAL/Search_traits_3.h>
+#include <CGAL/Search_traits_adapter.h>
+#include <CGAL/Orthogonal_k_neighbor_search.h>
 #include <CGAL/Vector_3.h>
 #include "../Polyhedron.h"
 #include "../MeshFix/MeshFix.h"
@@ -164,14 +168,6 @@ void GenerateBase2(Polyhedron &mesh)
             }
         }
     }
-    // for(auto hv : CGAL::vertices(mesh))
-    // {
-    //     if(hv->_label != 0 && hv->_label != 1)
-    //     {
-    //         sources.push_back(hv);
-    //     }
-    // }
-
     heat_method.add_sources(sources);
     heat_method.estimate_geodesic_distances(boost::make_assoc_property_map(distances));
     
@@ -197,19 +193,137 @@ void GenerateBase2(Polyhedron &mesh)
         }
     }
 
-    // {
-    //     EasyOBJ obj("patch.obj");
-    //     for(auto hf : face_to_remove)
-    //     {
-    //         auto p0 = hf->halfedge()->vertex()->point();
-    //         auto p1 = hf->halfedge()->next()->vertex()->point();
-    //         auto p2 = hf->halfedge()->next()->next()->vertex()->point();
-    //         auto i0 = obj.AddV(p0);
-    //         auto i1 = obj.AddV(p1);
-    //         auto i2 = obj.AddV(p2);
-    //         obj.AddF(i0, i1, i2);
-    //     }
-    // }
+    // After removing, we want the remaining part to be one single connected component. So we try to merge them here.
+    std::cout << "Computing connected components..." << std::endl;
+    std::unordered_set<typename Polyhedron::Facet_handle> remain_faces;
+    for(auto hf : CGAL::faces(mesh))
+        if(face_to_remove.count(hf) == 0)
+            remain_faces.insert(hf);
+    std::vector<std::unordered_set<typename Polyhedron::Facet_handle>> conn_comp_remain_faces;
+    while(!remain_faces.empty())
+    {
+        std::unordered_set<typename Polyhedron::Facet_handle> component;
+        std::queue<typename Polyhedron::Facet_handle> q;
+        q.push(*remain_faces.begin());
+        remain_faces.erase(q.front());
+
+        while(!q.empty())
+        {
+            auto hf = q.front();
+            q.pop();
+            component.insert(hf);
+            for(auto nei : CGAL::faces_around_face(hf->halfedge(), mesh))
+            {
+                if(remain_faces.count(nei) != 0)
+                {
+                    q.push(nei);
+                    remain_faces.erase(nei);
+                }
+            }
+        }
+
+        conn_comp_remain_faces.push_back(std::move(component));
+    }
+
+    std::cout << "Found " << conn_comp_remain_faces.size() << " remaining parts." << std::endl;
+    typedef CGAL::Search_traits_3<typename Polyhedron::Traits::Kernel>      Traits_base;
+    typedef boost::property_map<Polyhedron,CGAL::vertex_point_t>::type            Vertex_point_pmap;
+    typedef CGAL::Search_traits_adapter<typename Polyhedron::Vertex_handle, Vertex_point_pmap, Traits_base> Traits;
+    typedef CGAL::Orthogonal_k_neighbor_search<Traits>                      K_neighbor_search;
+    typedef K_neighbor_search::Tree                                         Tree;
+    typedef Tree::Splitter                                                  Splitter;
+    typedef K_neighbor_search::Distance                                     Distance;
+    typedef CGAL::Surface_mesh_shortest_path_traits<typename Polyhedron::Traits::Kernel, Polyhedron>    ShortestPathTraits;
+    typedef boost::property_map<Polyhedron,
+                            boost::vertex_external_index_t>::const_type   Vertex_index_map;
+    typedef boost::property_map<Polyhedron,
+                                CGAL::halfedge_external_index_t>::const_type  Halfedge_index_map;
+    typedef boost::property_map<Polyhedron,
+                                CGAL::face_external_index_t>::const_type      Face_index_map;
+    typedef CGAL::Surface_mesh_shortest_path<ShortestPathTraits,
+                                         Vertex_index_map,
+                                         Halfedge_index_map,
+                                         Face_index_map>  Surface_mesh_shortest_path;
+    struct Sequence_collector
+    {
+        // Luckily we don't need an accurate sequence, so we just record all 'related' vertices.
+        std::unordered_set<typename Polyhedron::Facet_handle> faces;
+        Polyhedron& m;
+        Sequence_collector(Polyhedron& _m) : m(_m) {}
+        void operator()(typename Polyhedron::Halfedge_handle he, double alpha)
+        {
+            for(auto nei : CGAL::faces_around_target(he, m))
+            {
+                faces.insert(nei);
+            }
+            for(auto nei : CGAL::faces_around_target(he->prev(), m))
+            {
+                faces.insert(nei);
+            }
+        }
+        void operator()(typename Polyhedron::Vertex_handle v)
+        {
+            for(auto nei : CGAL::faces_around_target(v->halfedge(), m))
+            {
+                faces.insert(nei);
+            }
+        }
+        void operator()(typename Polyhedron::Facet_handle f, ShortestPathTraits::Barycentric_coordinates alpha)
+        {
+            faces.insert(f);
+        }
+    };
+    for(int i = 1; i < conn_comp_remain_faces.size(); i++)
+    {
+        auto& part1 = conn_comp_remain_faces[0];
+        auto& part2 = conn_comp_remain_faces[i];
+        std::unordered_set<typename Polyhedron::Vertex_handle> part1_vertices;
+        std::unordered_set<typename Polyhedron::Vertex_handle> part2_vertices;
+        for(auto hf : part1)
+            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh)) part1_vertices.insert(hv);
+        for(auto hf : part2)
+            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh)) part2_vertices.insert(hv);
+        
+        Vertex_point_pmap vppmap = get(CGAL::vertex_point, mesh);
+        // Insert vertices in the tree
+        Tree tree(part1_vertices.begin(), part1_vertices.end(), Splitter(), Traits(vppmap));
+        std::pair<typename Polyhedron::Vertex_handle, typename Polyhedron::Vertex_handle> nearest_pair;
+        double nearest_dist = std::numeric_limits<double>::max();
+        for(auto hv : part2_vertices)
+        {
+            K_neighbor_search search(tree, hv->point(), 1, 0.0, true, Distance(vppmap));
+            if(search.begin()->second < nearest_dist)
+            {
+                nearest_pair = {search.begin()->first, hv};
+                nearest_dist = search.begin()->second;
+            }
+        }
+
+        Surface_mesh_shortest_path shortest_paths(mesh,
+                                            get(boost::vertex_external_index, mesh),
+                                            get(CGAL::halfedge_external_index, mesh),
+                                            get(CGAL::face_external_index, mesh),
+                                            get(CGAL::vertex_point, mesh));
+        shortest_paths.add_source_point(nearest_pair.first);
+        Sequence_collector sequence(mesh);
+        shortest_paths.shortest_path_sequence_to_source_points(nearest_pair.second, sequence);
+
+        // make the connecting part wider
+        std::unordered_set<typename Polyhedron::Facet_handle> connector_faces;
+        for(auto hf : sequence.faces)
+        {
+            connector_faces.insert(hf);
+            for(auto nei : CGAL::faces_around_face(hf->halfedge(), mesh))
+                connector_faces.insert(nei);
+        }
+
+        for(auto hf : part2)
+            part1.insert(hf);
+        for(auto hf : connector_faces)
+            part1.insert(hf);
+    }
+    // conn_comp_remain_faces[0] should contains all faces now
+    std::erase_if(face_to_remove, [&conn_comp_remain_faces](auto hf) { return conn_comp_remain_faces[0].count(hf) != 0; });
 
     for (auto hf : face_to_remove)
     {
