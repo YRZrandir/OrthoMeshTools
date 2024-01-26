@@ -214,7 +214,7 @@ void GenerateBase2(Polyhedron &mesh)
             component.insert(hf);
             for(auto nei : CGAL::faces_around_face(hf->halfedge(), mesh))
             {
-                if(remain_faces.count(nei) != 0)
+                if(nei != nullptr && remain_faces.count(nei) != 0)
                 {
                     q.push(nei);
                     remain_faces.erase(nei);
@@ -222,6 +222,29 @@ void GenerateBase2(Polyhedron &mesh)
             }
         }
 
+        if(component.size() <= 10)
+            continue;
+        
+        bool component_contain_tooth = false;
+        for(auto hf : component)
+        {
+            if(hf == nullptr)
+                continue;
+            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh))
+            {
+                if(hv->_label >= 11 && hv->_label <= 49)
+                {
+                    component_contain_tooth = true;
+                    break;
+                }
+            }
+            if(component_contain_tooth)
+                break;
+        }
+        if(!component_contain_tooth)
+        {
+            continue;
+        }
         conn_comp_remain_faces.push_back(std::move(component));
     }
 
@@ -234,12 +257,9 @@ void GenerateBase2(Polyhedron &mesh)
     typedef Tree::Splitter                                                  Splitter;
     typedef K_neighbor_search::Distance                                     Distance;
     typedef CGAL::Surface_mesh_shortest_path_traits<typename Polyhedron::Traits::Kernel, Polyhedron>    ShortestPathTraits;
-    typedef boost::property_map<Polyhedron,
-                            boost::vertex_external_index_t>::const_type   Vertex_index_map;
-    typedef boost::property_map<Polyhedron,
-                                CGAL::halfedge_external_index_t>::const_type  Halfedge_index_map;
-    typedef boost::property_map<Polyhedron,
-                                CGAL::face_external_index_t>::const_type      Face_index_map;
+    typedef boost::property_map<Polyhedron, boost::vertex_external_index_t>::const_type   Vertex_index_map;
+    typedef boost::property_map<Polyhedron, CGAL::halfedge_external_index_t>::const_type  Halfedge_index_map;
+    typedef boost::property_map<Polyhedron, CGAL::face_external_index_t>::const_type      Face_index_map;
     typedef CGAL::Surface_mesh_shortest_path<ShortestPathTraits,
                                          Vertex_index_map,
                                          Halfedge_index_map,
@@ -254,36 +274,55 @@ void GenerateBase2(Polyhedron &mesh)
         {
             for(auto nei : CGAL::faces_around_target(he, m))
             {
-                faces.insert(nei);
+                if(nei != nullptr)
+                    faces.insert(nei);
             }
             for(auto nei : CGAL::faces_around_target(he->prev(), m))
             {
-                faces.insert(nei);
+                if(nei != nullptr)
+                    faces.insert(nei);
             }
         }
         void operator()(typename Polyhedron::Vertex_handle v)
         {
             for(auto nei : CGAL::faces_around_target(v->halfedge(), m))
             {
-                faces.insert(nei);
+                if(nei != nullptr)
+                    faces.insert(nei);
             }
         }
         void operator()(typename Polyhedron::Facet_handle f, ShortestPathTraits::Barycentric_coordinates alpha)
         {
-            faces.insert(f);
+            if(f != nullptr)
+                faces.insert(f);
         }
     };
+    
     for(int i = 1; i < conn_comp_remain_faces.size(); i++)
     {
+        std::cout << "computing nearest parts..";
         auto& part1 = conn_comp_remain_faces[0];
         auto& part2 = conn_comp_remain_faces[i];
         std::unordered_set<typename Polyhedron::Vertex_handle> part1_vertices;
         std::unordered_set<typename Polyhedron::Vertex_handle> part2_vertices;
         for(auto hf : part1)
-            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh)) part1_vertices.insert(hv);
+        {
+            if(hf != nullptr)
+            {
+                for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh))
+                    part1_vertices.insert(hv);
+            }
+        }
         for(auto hf : part2)
-            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh)) part2_vertices.insert(hv);
+        {
+            if(hf != nullptr)
+            {
+                for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh)) 
+                    part2_vertices.insert(hv);
+            }
+        }
         
+        std::cout << "searching nearest pair..";
         Vertex_point_pmap vppmap = get(CGAL::vertex_point, mesh);
         // Insert vertices in the tree
         Tree tree(part1_vertices.begin(), part1_vertices.end(), Splitter(), Traits(vppmap));
@@ -299,15 +338,22 @@ void GenerateBase2(Polyhedron &mesh)
             }
         }
 
+        std::cout << "computing shortest path..";
         Surface_mesh_shortest_path shortest_paths(mesh,
                                             get(boost::vertex_external_index, mesh),
                                             get(CGAL::halfedge_external_index, mesh),
                                             get(CGAL::face_external_index, mesh),
                                             get(CGAL::vertex_point, mesh));
+        std::cout << "query..";
         shortest_paths.add_source_point(nearest_pair.first);
         Sequence_collector sequence(mesh);
-        shortest_paths.shortest_path_sequence_to_source_points(nearest_pair.second, sequence);
+        auto [dist, it] = shortest_paths.shortest_path_sequence_to_source_points(nearest_pair.second, sequence);
+        std::cout << "query end..";
 
+        if(dist < 0)
+        {
+            std::cout << "Not reachable" << std::endl;
+        }
         // make the connecting part wider
         std::unordered_set<typename Polyhedron::Facet_handle> connector_faces;
         for(auto hf : sequence.faces)
@@ -321,6 +367,7 @@ void GenerateBase2(Polyhedron &mesh)
             part1.insert(hf);
         for(auto hf : connector_faces)
             part1.insert(hf);
+        std::cout << "done." << std::endl;
     }
     // conn_comp_remain_faces[0] should contains all faces now
     std::erase_if(face_to_remove, [&conn_comp_remain_faces](auto hf) { return conn_comp_remain_faces[0].count(hf) != 0; });
@@ -717,11 +764,48 @@ int main(int argc, char *argv[])
     parser.add_argument("--output_label", "-ol").required().help("specify the output labels.");
     parser.add_argument("--output_gum", "-g").help("specify the output gum mesh file.");
     parser.add_argument("--crown_frame", "-c").help("specify the crown frame file.");
-    parser.parse_args(argc, argv);
+    try
+    {
+        parser.parse_args(argc, argv);
+    }
+    catch(const std::exception& e)
+    {
+        std::cout << e.what() << std::endl;
+        return -1;
+    }
 
     Polyhedron mesh;
-    CGAL::IO::read_polygon_mesh(parser.get("-i"), mesh, CGAL::parameters::verbose(true));
-    mesh.LoadLabels(parser.get("-l"));
+    std::string input_file = parser.get("-i");
+    std::string label_file = parser.get("-l");
+    if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
+    {
+        try
+        {
+            printf("possible invalid mesh, try fixing...\n");
+            std::vector<typename Polyhedron::Traits::Point_3> vertices;
+            std::vector<TTriangle<size_t>> faces;
+            if(input_file.ends_with(".obj"))
+            {
+                LoadVFObj<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            }
+            else
+            {
+                // TODO: add custom file loading function for more formats, since assimp cannot keep vertex order sometimes.
+                LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            }
+            std::vector<int> labels = LoadLabels(label_file);
+            FixMeshWithLabel(vertices, faces, labels, mesh, true, 9999, false, false, 0, 0, false, 10);
+        }
+        catch(const std::exception&)
+        {
+            throw IOError("Cannot read mesh file or mesh invalid: " + input_file);
+        }
+    }
+    else
+    {
+        mesh.LoadLabels(label_file);
+        //mesh.UpdateFaceLabels2();
+    }
     bool upper = true;
     for(auto hv : CGAL::vertices(mesh))
     {
@@ -744,19 +828,18 @@ int main(int argc, char *argv[])
         std::cout << "Generating...";
         GenerateBase2(mesh);
         std::cout << "Done." << std::endl;
+        mesh.WriteOBJ(parser.get("-o"));
+        mesh.WriteLabels(parser.get("-ol"));
+
+        if(parser.present("-g").has_value() && parser.present("-c").has_value())
+        {
+            GenerateGum(parser.present("-g").value(), parser.present("-c").value(), upper, mesh);
+        }
     }
     catch(const std::exception& e)
     {
         std::cout << e.what() << std::endl;
     }
 
-    mesh.WriteOBJ(parser.get("-o"));
-    mesh.WriteLabels(parser.get("-ol"));
-
-    if(parser.present("-g").has_value() && parser.present("-c").has_value())
-    {
-        GenerateGum(parser.present("-g").value(), parser.present("-c").value(), upper, mesh);
-    }
-    
     return 0;
 }
