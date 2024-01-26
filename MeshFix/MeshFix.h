@@ -16,6 +16,7 @@
 #include <CGAL/Polyhedron_incremental_builder_3.h>
 #include <CGAL/Polyhedron_items_with_id_3.h>
 
+// TODO: remove this
 extern bool gVerbose;
 namespace internal
 {
@@ -517,7 +518,5 @@ void FixMeshWithLabel(
         }
     }
 }
-
-
 
 #endif

@@ -19,8 +19,69 @@
 #include "../Polyhedron.h"
 #include "../MeshFix/MeshFix.h"
 #include "../EasyOBJ.h"
+#include "../SegClean/SegClean.h"
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
 using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
+
+void LabelProcessing(Polyhedron& mesh)
+{
+    using hVertex = typename Polyhedron::Vertex_handle;
+    auto aabb = CGAL::bbox_3(mesh.points_begin(), mesh.points_end());
+    double threshold = std::max(aabb.x_span(), std::max(aabb.y_span(), aabb.z_span())) / 150.0;
+    
+    std::unordered_map<hVertex, int> new_label_set;
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(hv->_label != 0)
+        {
+            continue;
+        }
+        std::unordered_set<hVertex> neighbors;
+        std::unordered_set<int> labels;
+        std::queue<hVertex> q;
+        q.push(hv);
+        neighbors.insert(hv);
+        labels.insert(hv->_label);
+        while(!q.empty())
+        {
+            hVertex curr = q.front();
+            q.pop();
+            for(auto nei : CGAL::vertices_around_target(curr, mesh))
+            {
+                if(neighbors.count(nei) == 0 && CGAL::squared_distance(nei->point(), hv->point()) < threshold * threshold)
+                {
+                    neighbors.insert(nei);
+                    labels.insert(nei->_label);
+                    q.push(nei);
+                }
+            }
+        }
+        if(labels.size() >= 3)
+        {
+            double nearest_dist = std::numeric_limits<double>::max();
+            hVertex nearest_hv = nullptr;
+            for(auto nei : neighbors)
+            {
+                if(nei->_label == hv->_label)
+                {
+                    continue;
+                }
+                double d = CGAL::squared_distance(nei->point(), hv->point());
+                if(d < nearest_dist)
+                {
+                    nearest_dist = d;
+                    nearest_hv = nei;
+                }
+            }
+            new_label_set.insert({hv, nearest_hv->_label});
+        }
+    }
+
+    for(auto [hv, label] : new_label_set)
+    {
+        hv->_label = label;
+    }
+}
 
 void GenerateBase1(Polyhedron &mesh)
 {
@@ -806,6 +867,9 @@ int main(int argc, char *argv[])
         mesh.LoadLabels(label_file);
         //mesh.UpdateFaceLabels2();
     }
+    LabelProcessing(mesh);
+    SegClean(mesh);
+
     bool upper = true;
     for(auto hv : CGAL::vertices(mesh))
     {
