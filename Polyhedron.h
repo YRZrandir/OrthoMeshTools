@@ -21,7 +21,7 @@
 #include <nlohmann/json.hpp>
 #include "Ortho.h"
 
-
+std::vector<int> LoadLabels( std::string path );
 template <typename SizeType>
 struct TTriangle
 {
@@ -892,7 +892,6 @@ bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3
         return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
 }
 
-std::vector<int> LoadLabels( std::string path );
 
 template <typename Facet_handle>
 Facet_handle::value_type::Vertex::Point_3::R::Vector_3 FaceNormal(Facet_handle hf)
