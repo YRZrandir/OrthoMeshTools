@@ -813,6 +813,7 @@ void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Po
     deformation.deform(10, 1e-4);
 
     mesh.WriteOBJ(output_gum);
+    mesh.WriteLabels(output_gum.substr(0, output_gum.rfind('.')) + ".json");
     std::cout << "Done." << std::endl;
 }
 

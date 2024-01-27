@@ -235,7 +235,7 @@ int main(int argc, char* argv[])
     bool upper = true;
     for(auto hv : CGAL::vertices(mesh))
     {
-        if(hv->_label != 0)
+        if(hv->_label >= 11)
         {
             if(hv->_label <= 30)
             {

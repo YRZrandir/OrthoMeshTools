@@ -175,7 +175,7 @@ public:
 
             std::vector<typename MeshType::Vertex_handle> control_vertices;
             for (auto hv : CGAL::vertices(mesh))
-                if (hv->_label != 0)
+                if (hv->_label >= 11 && hv->_label <= 49 || hv->_label == 1)
                     control_vertices.push_back(static_cast<typename MeshType::Vertex_handle>(hv));
 
             // For better deformation, we want to control the positions of some gum vertices that are close to the gumline.
@@ -230,12 +230,12 @@ public:
                     {
                         Eigen::Vector3d p = ToEigen(hv->ori_pos);
                         int label = hv->_label;
-                        if (label != 1)
+                        if (label >= 11)
                         {
                             Eigen::Vector3d pos = _cbct_regis->CBCT_to_IOS(label) * frames[step].at(label) * (_cbct_regis->IOS_to_CBCT(label) * p - _cbct_centroids.at(label).translation());
                             deformation.set_target_position(hv, CGAL::ORIGIN + ToCGAL<double, Kernel>(pos));
                         }
-                        else
+                        else if(label == 1)
                         {
                             deformation.set_target_position(hv, hv->point());
                         }
@@ -249,22 +249,20 @@ public:
                     if (hv->_label != 0)
                     {
                         int label = hv->_label;
-                        if (label != 1)
+                        if (label >= 11)
                         {
                             Eigen::Vector3d p = ToEigen(hv->point());
                             Eigen::Vector3d p_cbct = _cbct_regis->CBCT_to_IOS(label).inverse() * p;
                             Eigen::Vector3d pos = _cbct_regis->CBCT_to_IOS(label) * frames[step].at(label) * frames[step - 1].at(label).inverse() * p_cbct;
                             deformation.set_target_position(hv, CGAL::ORIGIN + ToCGAL<double, Kernel>(pos));
                         }
-                        else
+                        else if(label == 1)
                         {
                             deformation.set_target_position(hv, hv->point());
                         }
                     }
                 }
             }
-            mesh.WriteOBJ("mid" + std::to_string(step) + ".obj");
-
             printf("deform...");
             deformation.deform(10, 1e-4);
 
@@ -276,6 +274,15 @@ public:
                 int l0 = hf->halfedge()->vertex()->_label;
                 int l1 = hf->halfedge()->next()->vertex()->_label;
                 int l2 = hf->halfedge()->prev()->vertex()->_label;
+                if(l0 == 3 || l1 == 3 || l2 == 3)
+                {
+                    faces_to_remove.insert(static_cast<typename MeshType::Facet_handle>(hf));
+                    for (auto nei : CGAL::faces_around_face(hf->halfedge(), mesh))
+                    {
+                        faces_to_remove.insert(static_cast<typename MeshType::Facet_handle>(nei));
+                    }
+                    continue;
+                }
                 if (l0 != 0)
                     non_zero_label++;
                 if (l1 != 0)
@@ -299,6 +306,7 @@ public:
                 mesh.erase_facet(hf->halfedge());
             }
 
+            //mesh.WriteOBJ("mid.obj");
             auto [vertices, faces] = mesh.ToVerticesTriangles();
             std::vector<std::pair<std::vector<typename MeshType::Vertex_handle>, std::vector<typename MeshType::Facet_handle>>> patch;
             FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, true, false, 100, 100, true, 10, &patch);
