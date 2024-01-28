@@ -1,5 +1,6 @@
 #ifdef FOUND_PYBIND11
 #include <pybind11/pybind11.h>
+#include <pybind11/stl.h>
 #include "ColorMeshByLabel/ColorMeshByLabel.h"
 #include "GumTrimLine/GumTrimLine.h"
 #include "HoleMerge/HoleMerge.h"
