@@ -15,7 +15,7 @@
 #include <pybind11/pybind11.h>
 #endif
 
-// #define DEBUG_OUTPUT
+//#define DEBUG_OUTPUT
 namespace
 {
     using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
@@ -271,6 +271,7 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
             aabb_tree.all_intersected_primitives(t1, std::back_inserter(this_intersect_faces));
 
             if (!IsConnectedComponent(this_intersect_faces.begin(), this_intersect_faces.end(), mesh))
+            //if(false)
             {
                 auto path = FindPath(hf0, hf1, mesh);
                 for (auto hf : path)
@@ -292,22 +293,22 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
             }
         }
         std::cout << "Intersection: " << all_intersect_faces.size() << std::endl;
+        #ifdef DEBUG_OUTPUT
+            {
+                std::ofstream ofs("cutfaces.obj");
+                int cnt = 1;
+                for (const auto &tri : cut_faces)
+                {
+                    for (int i = 0; i < 3; i++)
+                        ofs << std::format("v {} {} {}\n", tri.vertex(i).x(), tri.vertex(i).y(), tri.vertex(i).z());
+                    ofs << std::format("f {} {} {}\n", cnt, cnt + 1, cnt + 2);
+                    cnt += 3;
+                }
+                ofs.close();
+            }
+        #endif
     }
 
-#ifdef DEBUG_OUTPUT
-    {
-        std::ofstream ofs("../../test/cutfaces.obj");
-        int cnt = 1;
-        for (const auto &tri : cut_faces)
-        {
-            for (int i = 0; i < 3; i++)
-                ofs << std::format("v {} {} {}\n", tri.vertex(i).x(), tri.vertex(i).y(), tri.vertex(i).z());
-            ofs << std::format("f {} {} {}\n", cnt, cnt + 1, cnt + 2);
-            cnt += 3;
-        }
-        ofs.close();
-    }
-#endif
     std::unordered_set<hVertex> processed_set;
 #pragma omp critical
     {
@@ -390,8 +391,9 @@ bool ReSegmentLabels(
         std::cout << "Error: input mesh has non triangle face." << std::endl;
         return false;
     }
+    std::cout << "Setting id" << std::endl; 
     CGAL::set_halfedgeds_items_id(mesh);
-
+    std::cout << "Constructing aabb tree" << std::endl;
     AABBTree aabb_tree(mesh.facets_begin(), mesh.facets_end(), mesh);
     if(aabb_tree.empty())
     {
@@ -408,10 +410,11 @@ bool ReSegmentLabels(
         if (!upper && splitline_labels[i] > 30)
             indices_to_process.push_back(i);
     }
-#pragma omp parallel for
+//#pragma omp parallel for
     for (int i = 0; i < indices_to_process.size(); i++)
-    {
+    {   
         int idx = indices_to_process[i];
+        std::cout << "try resegment label " << splitline_labels[idx] << std::endl;
         ReSegmentOneLabel(mesh, aabb_tree, splitlines[idx], output_labels, splitline_labels[idx], intersection_width, cutface_orit_smooth);
     }
 
@@ -430,10 +433,10 @@ bool ReSegmentLabels(
 #ifndef FOUND_PYBIND11
 int main(int argc, char *argv[])
 {
-    std::cout << "Not implemented. Please use python interface." << std::endl;
-    return 0;
+    // std::cout << "Not implemented. Please use python interface." << std::endl;
+    // return 0;
     std::cout << std::format("CGAL: {}", CGAL_STR(CGAL_VERSION)) << std::endl;
-    std::filesystem::current_path("../../test/ReSegment/");
+    std::filesystem::current_path("../../test/reseg/");
     // std::ifstream ifs("../../test/case1/seg.json");
     // nlohmann::json json = nlohmann::json::parse(ifs);
     // ifs.close();
@@ -443,21 +446,10 @@ int main(int argc, char *argv[])
     std::vector<std::vector<std::vector<double>>> splitlines;
     std::vector<int> splitline_labels;
     splitlines.resize(1);
-    splitline_labels.push_back(31);
+    splitline_labels.push_back(35);
 
     {
-        std::ifstream ifs("case2-multicurve/test_boundary0.xyz");
-        std::vector<double> xyz;
-        while (ifs)
-        {
-            double v = 0.0;
-            ifs >> v;
-            xyz.push_back(v);
-        }
-        splitlines[0].push_back(xyz);
-    }
-    {
-        std::ifstream ifs("case2-multicurve/test_boundary1.xyz");
+        std::ifstream ifs("test_boundary_35.xyz");
         std::vector<double> xyz;
         while (ifs)
         {
@@ -468,7 +460,7 @@ int main(int argc, char *argv[])
         splitlines[0].push_back(xyz);
     }
 
-    ReSegmentLabels("oral_scan_L.ply", splitlines, splitline_labels, "case1/out.json", 0.2, 5, false);
+    ReSegmentLabels("oral_scan_L.ply", splitlines, splitline_labels, "out.json", 0.2, 5, false);
     return 0;
 }
 #endif
