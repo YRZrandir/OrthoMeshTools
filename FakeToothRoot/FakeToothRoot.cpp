@@ -638,9 +638,32 @@ void Run(int argc, char* argv[])
 
 int main(int argc, char* argv[])
 {
+    std::string input_path;
+    std::string output_path;
+    std::string frame_path;
+    std::string label_path;
+    for(int i = 1; i < argc; i++)
+    {
+        if(std::strcmp(argv[i], "-i") == 0)
+        {
+            input_path = std::string(argv[i+1]);
+        }
+        if(std::strcmp(argv[i], "-o") == 0)
+        {
+            output_path = std::string(argv[i+1]);
+        }
+        if(std::strcmp(argv[i], "-f") == 0)
+        {
+            frame_path = std::string(argv[i+1]);
+        }
+        if(std::strcmp(argv[i], "-l") == 0)
+        {
+            label_path = std::string(argv[i+1]);
+        }
+    }
     Polyhedron scanmesh;
-    CGAL::IO::read_polygon_mesh("../../test/teethroot/oral_scan_U.obj", scanmesh);
-    LoadLabels(scanmesh, "../../test/teethroot/oral_scan_U.json");
+    CGAL::IO::read_polygon_mesh(input_path, scanmesh);
+    LoadLabels(scanmesh, label_path);
     //scanmesh.WriteOBJ("../../test/test1.obj");
 
     auto [points, indices1] = scanmesh.ToVerticesIndices();
@@ -659,7 +682,7 @@ int main(int argc, char* argv[])
     for(auto& hv : CGAL::vertices(scanmesh))
         labels.push_back(hv->_label);
 
-    std::ifstream frame_ifs("../../test/teethroot/frame.json");
+    std::ifstream frame_ifs(frame_path);
     std::string frame_json{std::istreambuf_iterator<char>(frame_ifs), std::istreambuf_iterator<char>()};
 
     float* out_vertices{nullptr};
@@ -683,7 +706,7 @@ int main(int argc, char* argv[])
     for(auto hv : CGAL::vertices(result_mesh))
         hv->_label = out_labels[count++]; 
 
-    std::ofstream ofs("../../test/teethroot/faketooth.ply", std::ios::binary);
+    std::ofstream ofs(output_path, std::ios::binary);
     CGAL::IO::set_binary_mode(ofs);
     CGAL::IO::write_PLY(ofs, result_mesh);
 
