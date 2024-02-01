@@ -5,6 +5,8 @@ project ("OrthoMeshTools" C CXX)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS "-fpermissive -fPIC -fopenmp")
+option(BUILD_EXECUTABLES "" OFF)
+option(BUILD_PYTHON_LIB "" ON)
 
 add_compile_definitions(NOMINMAX)
 
@@ -23,14 +25,20 @@ include_directories("./")
 add_library(Ortho "Polyhedron.cpp" "Polyhedron.h" "Ortho.h")
 target_link_libraries(Ortho PUBLIC CGAL::CGAL CGAL::Eigen3_support nlohmann_json::nlohmann_json OpenMP::OpenMP_CXX assimp::assimp)
 
-if(pybind11_FOUND)
-    add_compile_definitions(FOUND_PYBIND11)
-    pybind11_add_module(OrthoMeshTools SHARED "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
-     "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp")
-    target_link_libraries(OrthoMeshTools PUBLIC Ortho pybind11::module)
-    target_compile_definitions(OrthoMeshTools PUBLIC FOUND_PYBIND11)
-else ()
-    find_package(argparse)
+if(BUILD_PYTHON_LIB)
+    if(pybind11_FOUND)
+        add_compile_definitions(FOUND_PYBIND11)
+        pybind11_add_module(OrthoMeshTools SHARED "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
+        "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp")
+        target_link_libraries(OrthoMeshTools PUBLIC Ortho pybind11::module)
+        target_compile_definitions(OrthoMeshTools PUBLIC FOUND_PYBIND11)
+    else()
+        message(WARNING "Failed to find pybind11.")
+    endif()
+endif()
+
+if(BUILD_EXECUTABLES)
+    find_package(argparse REQUIRED)
 
     add_executable(MeshFix "MeshFix/MeshFix.cpp" "MeshFix/MeshFix.h" "MeshFix/MeshFixApp.cpp")
     target_compile_definitions(MeshFix PRIVATE _USE_MATH_DEFINES)
