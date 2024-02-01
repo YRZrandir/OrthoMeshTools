@@ -20,6 +20,166 @@
 extern bool gVerbose;
 namespace internal
 {
+
+template <typename Kernel, typename SizeType>
+std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face)
+    {
+        using size_type = SizeType;
+        std::vector<std::pair<TTriangle<SizeType>, bool>> faceflags;
+        for(auto& f : faces)
+        {
+            faceflags.push_back(std::make_pair(f, true));
+        }
+
+        std::unordered_map<std::pair<SizeType, SizeType>, TEdge<SizeType>, TPairHashUnordered<SizeType>, TPairPredUnordered<SizeType>> edges;
+        for(size_t i = 0; i < faceflags.size(); i++)
+        {
+            const auto& f = faceflags[i].first;
+            auto ie0 = edges.find(std::make_pair(f[0], f[1]));
+            if(ie0 == edges.end())
+            {
+                edges[{f[0], f[1]}] = TEdge<SizeType>(f[0], f[1]);
+                edges[{f[0], f[1]}]._faces.push_back(i);
+            }
+            else
+            {
+                edges[{f[0], f[1]}]._faces.push_back(i);
+            }
+
+            auto ie1 = edges.find({f[1], f[2]});
+            if(ie1 == edges.end())
+            {
+                edges[{f[1], f[2]}] = TEdge<SizeType>(f[1], f[2]);
+                edges[{f[1], f[2]}]._faces.push_back(i);
+            }
+            else
+            {
+                edges[{f[1], f[2]}]._faces.push_back(i);
+            }
+
+            auto ie2 = edges.find({f[2], f[0]});
+            if(ie2 == edges.end())
+            {
+                edges[{f[2], f[0]}] = TEdge<SizeType>(f[2], f[0]);
+                edges[{f[2], f[0]}]._faces.push_back(i);
+            }
+            else
+            {
+                edges[{f[2], f[0]}]._faces.push_back(i);
+            }
+        }
+
+        std::vector<SizeType> problematic_vertices;
+        size_t nb_nm_edges = 0;
+        for(auto it = edges.begin(); it != edges.end(); it++)
+        {
+            if(it->second._faces.size() <= 2)
+            {
+                continue;
+            }
+
+            problematic_vertices.push_back(it->first.first);
+            problematic_vertices.push_back(it->first.second);
+
+            for(const auto& hf : it->second._faces)
+            {
+                nb_nm_edges++;
+                faceflags[hf].second = false;
+            }
+        }
+
+        std::vector<std::vector<SizeType>> vneighbors;
+        vneighbors.resize(vertices.size());
+        for(size_t i = 0; i < faceflags.size(); i++)
+        {
+            if(faceflags[i].second)
+            {
+                vneighbors[faceflags[i].first[0]].push_back(i);
+                vneighbors[faceflags[i].first[1]].push_back(i);
+                vneighbors[faceflags[i].first[2]].push_back(i);
+            }
+        }
+
+        for(auto pv : problematic_vertices)
+        {
+            for(auto f : vneighbors[pv])
+            {
+                faceflags[f].second = false;
+            }
+        }
+
+        std::atomic_int nb_nm_vertices = 0;
+#pragma omp parallel for
+        for(int iv = 0; iv < vneighbors.size(); iv++)
+        {
+            auto& neighbors = vneighbors[iv];
+            std::list<std::pair<SizeType, SizeType>> sur_edges;
+            size_t nb_connect_faces = neighbors.size();
+            std::vector<int> sampled(nb_connect_faces, 0);
+            size_t nb_cluster = 0;
+            for(size_t i = 0; i < nb_connect_faces; i++)
+            {
+                if(sampled[i] == 1)
+                    continue;
+                std::list<size_t> cluster;
+                cluster.push_back(i);
+                sampled[i] = 1;
+                do
+                {
+                    auto e0 = faceflags[neighbors[cluster.front()]].first.GetEdge(0);
+                    auto e1 = faceflags[neighbors[cluster.front()]].first.GetEdge(1);
+                    auto e2 = faceflags[neighbors[cluster.front()]].first.GetEdge(2);
+
+                    for(size_t j = 0; j < nb_connect_faces; j++)
+                    {
+                        if(j != cluster.front() && sampled[j] != 1)
+                        {
+                            auto e3 = faceflags[neighbors[j]].first.GetEdge(0);
+                            auto e4 = faceflags[neighbors[j]].first.GetEdge(1);
+                            auto e5 = faceflags[neighbors[j]].first.GetEdge(2);
+
+                            if(TPairPredUnordered<SizeType>()(e0, e3) || TPairPredUnordered<SizeType>()(e0, e4) || TPairPredUnordered<SizeType>()(e0, e5) ||
+                               TPairPredUnordered<SizeType>()(e1, e3) || TPairPredUnordered<SizeType>()(e1, e4) || TPairPredUnordered<SizeType>()(e1, e5) ||
+                               TPairPredUnordered<SizeType>()(e2, e3) || TPairPredUnordered<SizeType>()(e2, e4) || TPairPredUnordered<SizeType>()(e2, e5))
+                            {
+                                cluster.push_back(j);
+                                sampled[j] = 1;
+                            }
+                        }
+                    }
+                    cluster.pop_front();
+                } while(!cluster.empty());
+                nb_cluster++;
+            }
+
+            if(nb_cluster > 1)
+            {
+                nb_nm_vertices++;
+                for(size_t hf : neighbors)
+                {
+                    faceflags[hf].second = false;
+                }
+            }
+        }
+
+        std::vector<TTriangle<SizeType>> result_faces;
+        for(const auto& [face, flag] : faceflags)
+        {
+            if(flag)
+            {
+                result_faces.push_back(face);
+            }
+        }
+
+        if(gVerbose)
+        {
+            std::cout << "Find " << nb_nm_edges << " non-manifold edges and " << nb_nm_vertices << " non-manifold vertices." << std::endl;
+            std::cout << "After remove non-manifold: " << result_faces.size() << " faces." << std::endl;
+        }
+        *nb_removed_face = faces.size() - result_faces.size();
+        return result_faces;
+    }
+
 template <typename Kernel, typename SizeType>
 std::vector<TTriangle<SizeType>> FixRoundingOrder(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces )
 {
@@ -111,165 +271,6 @@ void FixSelfIntersection( Poly& m, int max_retry )
         hv->_label = labels[i];
         hv++;
     }
-}
-
-template <typename Kernel, typename SizeType>
-std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face)
-{
-    using size_type = SizeType;
-    std::vector<std::pair<TTriangle<SizeType>, bool>> faceflags;
-    for(auto& f : faces)
-    {
-        faceflags.push_back(std::make_pair(f, true));
-    }
-
-    std::unordered_map<std::pair<SizeType, SizeType>, TEdge<SizeType>, TPairHashUnordered<SizeType>, TPairPredUnordered<SizeType>> edges;
-    for(size_t i = 0; i < faceflags.size(); i++)
-    {
-        const auto& f = faceflags[i].first;
-        auto ie0 = edges.find(std::make_pair(f[0], f[1]));
-        if(ie0 == edges.end())
-        {
-            edges[{f[0], f[1]}] = TEdge<SizeType>(f[0], f[1]);
-            edges[{f[0], f[1]}]._faces.push_back(i);
-        }
-        else
-        {
-            edges[{f[0], f[1]}]._faces.push_back(i);
-        }
-
-        auto ie1 = edges.find({f[1], f[2]});
-        if(ie1 == edges.end())
-        {
-            edges[{f[1], f[2]}] = TEdge<SizeType>(f[1], f[2]);
-            edges[{f[1], f[2]}]._faces.push_back(i);
-        }
-        else
-        {
-            edges[{f[1], f[2]}]._faces.push_back(i);
-        }
-
-        auto ie2 = edges.find({f[2], f[0]});
-        if(ie2 == edges.end())
-        {
-            edges[{f[2], f[0]}] = TEdge<SizeType>(f[2], f[0]);
-            edges[{f[2], f[0]}]._faces.push_back(i);
-        }
-        else
-        {
-            edges[{f[2], f[0]}]._faces.push_back(i);
-        }
-    }
-    
-    std::vector<SizeType> problematic_vertices;
-    size_t nb_nm_edges = 0;
-    for(auto it = edges.begin(); it != edges.end(); it++)
-    {
-        if(it->second._faces.size() <= 2)
-        {
-            continue;
-        }
-
-        problematic_vertices.push_back(it->first.first);
-        problematic_vertices.push_back(it->first.second);
-
-        for(const auto& hf : it->second._faces)
-        {
-            nb_nm_edges++;
-            faceflags[hf].second = false;
-        }
-    }
-
-    std::vector<std::vector<SizeType>> vneighbors;
-    vneighbors.resize(vertices.size());
-    for(size_t i = 0; i < faceflags.size(); i++)
-    {
-        if(faceflags[i].second)
-        {
-            vneighbors[faceflags[i].first[0]].push_back(i);
-            vneighbors[faceflags[i].first[1]].push_back(i);
-            vneighbors[faceflags[i].first[2]].push_back(i);
-        }
-    }
-
-    for(auto pv : problematic_vertices)
-    {
-        for(auto f : vneighbors[pv])
-        {
-            faceflags[f].second = false;
-        }
-    }
-
-    std::atomic_int nb_nm_vertices = 0;
-#pragma omp parallel for
-    for(int iv = 0; iv < vneighbors.size(); iv++)
-    {
-        auto& neighbors = vneighbors[iv];
-        std::list<std::pair<SizeType, SizeType>> sur_edges;
-        size_t nb_connect_faces = neighbors.size();
-        std::vector<int> sampled(nb_connect_faces, 0);
-        size_t nb_cluster = 0;
-        for(size_t i = 0; i < nb_connect_faces; i++)
-        {
-            if(sampled[i] == 1)
-                continue;
-            std::list<size_t> cluster;
-            cluster.push_back(i);
-            sampled[i] = 1;
-            do
-            {
-                auto e0 = faceflags[neighbors[cluster.front()]].first.GetEdge(0);
-                auto e1 = faceflags[neighbors[cluster.front()]].first.GetEdge(1);
-                auto e2 = faceflags[neighbors[cluster.front()]].first.GetEdge(2);
-
-                for(size_t j = 0; j < nb_connect_faces; j++)
-                {
-                    if(j != cluster.front() && sampled[j] != 1)
-                    {
-                        auto e3 = faceflags[neighbors[j]].first.GetEdge(0);
-                        auto e4 = faceflags[neighbors[j]].first.GetEdge(1);
-                        auto e5 = faceflags[neighbors[j]].first.GetEdge(2);
-
-                        if(TPairPredUnordered<SizeType>()(e0, e3) || TPairPredUnordered<SizeType>()(e0, e4) || TPairPredUnordered<SizeType>()(e0, e5) ||
-                        TPairPredUnordered<SizeType>()(e1, e3) || TPairPredUnordered<SizeType>()(e1, e4) || TPairPredUnordered<SizeType>()(e1, e5) ||
-                        TPairPredUnordered<SizeType>()(e2, e3) || TPairPredUnordered<SizeType>()(e2, e4) || TPairPredUnordered<SizeType>()(e2, e5))
-                        {
-                            cluster.push_back(j);
-                            sampled[j] = 1;
-                        }
-                    }
-                }
-                cluster.pop_front();
-            } while(!cluster.empty());
-            nb_cluster++;
-        }
-
-        if(nb_cluster > 1)
-        {
-            nb_nm_vertices++;
-            for(size_t hf : neighbors)
-            {
-                faceflags[hf].second = false;
-            }
-        }
-    }
-
-    std::vector<TTriangle<SizeType>> result_faces;
-    for(const auto& [face, flag] : faceflags)
-    {
-        if(flag)
-        {
-            result_faces.push_back(face);
-        }
-    }
-
-    if(gVerbose)
-    {
-        std::cout << "Find " << nb_nm_edges << " non-manifold edges and " << nb_nm_vertices << " non-manifold vertices." << std::endl;
-        std::cout << "After remove non-manifold: " << result_faces.size() << " faces." << std::endl;
-    }
-    *nb_removed_face = faces.size() - result_faces.size();
-    return result_faces;
 }
 }
 

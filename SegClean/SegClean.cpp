@@ -127,7 +127,7 @@ namespace
     }
 }
 
-bool SegClean(std::string input_mesh, std::string input_labels, std::string output_labels, int size_threshold)
+bool SegCleanF(std::string input_mesh, std::string input_labels, std::string output_labels, int size_threshold)
 {
     // Config cfg = LoadConfig(argc, argv);
     Polyhedron mesh;
@@ -203,7 +203,7 @@ bool SegClean(std::string input_mesh, std::string input_labels, std::string outp
 int main(int argc, char *argv[])
 {
     Config cfg = LoadConfig(argc, argv);
-    SegClean(cfg.input, cfg.labels, cfg.output, cfg.size_threshold);
+    SegCleanF(cfg.input, cfg.labels, cfg.output, cfg.size_threshold);
     return 0;
 }
 #endif

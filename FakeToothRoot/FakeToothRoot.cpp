@@ -636,6 +636,7 @@ void Run(int argc, char* argv[])
     result_mesh.WriteOBJ(output_path);
 }
 
+#ifndef FOUND_PYBIND11
 int main(int argc, char* argv[])
 {
     std::string input_path;
@@ -715,3 +716,4 @@ int main(int argc, char* argv[])
     delete[] out_labels;
     return 0;
 }
+#endif

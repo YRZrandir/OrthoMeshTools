@@ -1,5 +1,7 @@
 #include "GumTrimLine.h"
 #include <chrono>
+
+#ifndef FOUND_PYBIND11
 #include <argparse/argparse.hpp>
                                                                                                                                                                                                                                                        
 int main(int argc, char *argv[])
@@ -35,3 +37,4 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
+#endif

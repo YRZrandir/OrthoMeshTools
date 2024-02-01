@@ -20,7 +20,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("input_labels"),
         py::arg("output_mesh"));
 
-    m.def("SegClean", &SegClean,
+    m.def("SegClean", &SegCleanF,
         "Try to make sure each label is applied to single connected component. Areas that are smaller than size_threshold are processsed.",
         py::arg("input_mesh"),
         py::arg("input_labels"),
