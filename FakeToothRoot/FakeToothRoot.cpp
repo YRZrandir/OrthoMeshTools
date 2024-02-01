@@ -538,7 +538,7 @@ void GenFakeToothRoot(const float* vertices, const unsigned nb_vertices, const u
         int label = m.vertices_begin()->_label;
         labellist.push_back(label);
         ProcessOneToothLaplacian(m, frames[label].centroid, frames[label].up, label);
-        m.WriteOBJ(std::string("../../test/tooth") + std::to_string(i) + std::string(".obj"));
+        m.WriteOBJ(std::string("tooth") + std::to_string(label) + std::string(".obj"));
     }
 
     Polyhedron result_mesh;
