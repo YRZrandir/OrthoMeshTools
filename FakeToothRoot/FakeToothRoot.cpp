@@ -216,12 +216,13 @@ std::vector<Polyhedron> SplitByLabel(Polyhedron& mesh)
             CGAL::Face_filtered_graph<Polyhedron> filtered_mesh(mesh, facet_ranges[i]);
             Polyhedron mesh_label;
             CGAL::copy_face_graph(filtered_mesh, mesh_label);
+            auto [v, f] = mesh_label.ToVerticesTriangles();
+            FixMesh(v, f, mesh_label, true, 10, false, true, 0, 0, false, 10);
             for(auto hf : CGAL::faces(mesh_label))
                 hf->_label = i;
             for(auto hv : CGAL::vertices(mesh_label))
                 hv->_label = i;
             meshes.emplace_back(std::move(mesh_label));
-
         }
     }
     return meshes;
