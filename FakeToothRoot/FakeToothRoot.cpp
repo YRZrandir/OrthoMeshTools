@@ -5,12 +5,12 @@
 #include <CGAL/boost/graph/Face_filtered_graph.h>
 #include <CGAL/Surface_mesh_deformation.h>
 #include <CGAL/subdivision_method_3.h>
-#include <CGAL/Polygon_mesh_processing/refine.h>
 #include <CGAL/Polygon_mesh_processing/fair.h>
 #include <CGAL/Polygon_mesh_processing/remesh.h>
 #include <CGAL/Polygon_mesh_processing/self_intersections.h>
 #include <nlohmann/json.hpp>
 #include "../MeshFix/MeshFix.h"
+#include "FakeToothRoot.h"
 
 namespace 
 {
@@ -553,9 +553,9 @@ void ExportToothGroup(const std::vector<Polyhedron>& meshes, const std::vector<i
 }
 
 }
-extern "C"
-{
+
 void GenFakeToothRoot(const float* vertices, const unsigned nb_vertices, const unsigned* indices, unsigned nb_faces, const unsigned* labels, const char* frame_json,
+ const char* output_folder,
  float** out_vertices, unsigned** out_indices, unsigned** out_labels, unsigned* nb_out_vertices, unsigned* nb_out_faces)
 {
     std::vector<Point_3> points;
@@ -580,61 +580,60 @@ void GenFakeToothRoot(const float* vertices, const unsigned nb_vertices, const u
 
     auto frames = LoadToothFrames(frame_json);
     auto meshes = SplitByLabel(scanmesh);
-    std::vector<int> labellist;
-//#pragma omp parallel for
+    std::vector<int> labellist(meshes.size());
+
+#pragma omp parallel for default(none) shared(labellist, meshes, frames, output_folder)
     for(int i = 0; i < meshes.size(); i++)
     {
-        std::cout << i << std::endl;
         auto& m = meshes[i];
         int label = m.vertices_begin()->_label;
-        labellist.push_back(label);
+        labellist[i] = label;
         ProcessOneToothLaplacian(m, frames[label].centroid, frames[label].up, label);
-        m.WriteOBJ(std::string("tooth") + std::to_string(label) + std::string(".obj"));
+        m.WriteOBJ(std::string(output_folder) + std::to_string(label) + std::string(".obj"));
     }
 
-    Polyhedron result_mesh;
-    for(int i = 0; i < meshes.size(); i++)
-    {
-        auto& m = meshes[i];
-        std::unordered_map<hVertex, hVertex> v2v;
-        CGAL::copy_face_graph(m, result_mesh, CGAL::parameters::vertex_to_vertex_map(boost::make_assoc_property_map(v2v)));
-        for(auto& [vs, vt] : v2v)
-            vt->_label = labellist[i];
-    }
-
-
-    *nb_out_vertices = static_cast<unsigned int>(result_mesh.size_of_vertices());
-    *nb_out_faces = static_cast<unsigned int>(result_mesh.size_of_facets());
-
-    *out_vertices = new float[*nb_out_vertices * 3];
-    *out_indices = new unsigned[*nb_out_faces * 3];
-    *out_labels = new unsigned[*nb_out_vertices];
-
-    size_t count = 0;
-    std::unordered_map<hVertex, int> idmap;
-    for(auto& hv : CGAL::vertices(result_mesh))
-    {
-        auto& p = hv->point();
-        (*out_vertices)[count * 3 + 0] = p.x();
-        (*out_vertices)[count * 3 + 1] = p.y();
-        (*out_vertices)[count * 3 + 2] = p.z();
-        (*out_labels)[count] = hv->_label;
-        idmap[hv] = count;
-        ++count;
-    }
-
-    count = 0;
-    for(auto& hf : CGAL::faces(result_mesh))
-    {
-        auto hv0 = hf->halfedge()->vertex();
-        auto hv1 = hf->halfedge()->next()->vertex();
-        auto hv2 = hf->halfedge()->next()->next()->vertex();
-        (*out_indices)[count * 3 + 0] = idmap[hv0];
-        (*out_indices)[count * 3 + 1] = idmap[hv1];
-        (*out_indices)[count * 3 + 2] = idmap[hv2];
-        ++count;
-    }
-}
+//    Polyhedron result_mesh;
+//    for(int i = 0; i < meshes.size(); i++)
+//    {
+//        auto& m = meshes[i];
+//        std::unordered_map<hVertex, hVertex> v2v;
+//        CGAL::copy_face_graph(m, result_mesh, CGAL::parameters::vertex_to_vertex_map(boost::make_assoc_property_map(v2v)));
+//        for(auto& [vs, vt] : v2v)
+//            vt->_label = labellist[i];
+//    }
+//
+//
+//    *nb_out_vertices = static_cast<unsigned int>(result_mesh.size_of_vertices());
+//    *nb_out_faces = static_cast<unsigned int>(result_mesh.size_of_facets());
+//
+//    *out_vertices = new float[*nb_out_vertices * 3];
+//    *out_indices = new unsigned[*nb_out_faces * 3];
+//    *out_labels = new unsigned[*nb_out_vertices];
+//
+//    size_t count = 0;
+//    std::unordered_map<hVertex, int> idmap;
+//    for(auto& hv : CGAL::vertices(result_mesh))
+//    {
+//        auto& p = hv->point();
+//        (*out_vertices)[count * 3 + 0] = p.x();
+//        (*out_vertices)[count * 3 + 1] = p.y();
+//        (*out_vertices)[count * 3 + 2] = p.z();
+//        (*out_labels)[count] = hv->_label;
+//        idmap[hv] = count;
+//        ++count;
+//    }
+//
+//    count = 0;
+//    for(auto& hf : CGAL::faces(result_mesh))
+//    {
+//        auto hv0 = hf->halfedge()->vertex();
+//        auto hv1 = hf->halfedge()->next()->vertex();
+//        auto hv2 = hf->halfedge()->next()->next()->vertex();
+//        (*out_indices)[count * 3 + 0] = idmap[hv0];
+//        (*out_indices)[count * 3 + 1] = idmap[hv1];
+//        (*out_indices)[count * 3 + 2] = idmap[hv2];
+//        ++count;
+//    }
 }
 
 void FakeToothRoot(std::string input_path, std::string output_path, std::string frame_path, std::string label_path)
@@ -667,25 +666,29 @@ void FakeToothRoot(std::string input_path, std::string output_path, std::string 
     unsigned* out_labels{nullptr};
     unsigned nb_out_vertices{0};
     unsigned nb_out_faces{0};
-    GenFakeToothRoot(vertices.data(), scanmesh.size_of_vertices(), indices.data(), scanmesh.size_of_facets(), labels.data(), frame_json.c_str(), &out_vertices, &out_indices, &out_labels, &nb_out_vertices, &nb_out_faces);
 
-    std::vector<Point_3> out_points;
-    std::vector<size_t> out_faces;
-    for(unsigned i = 0; i < nb_out_vertices; i++)
-        out_points.emplace_back(out_vertices[i * 3], out_vertices[i * 3 + 1], out_vertices[i * 3 + 2]);
-    for(unsigned i = 0; i < nb_out_faces * 3; i++)
-        out_faces.push_back(out_indices[i]);
-    
-    std::cout << out_points.size() << " " << out_faces.size() << std::endl;
-    Polyhedron result_mesh;
-    result_mesh.BuildFromVerticesIndices(out_points, out_faces);
-    int count = 0;
-    for(auto hv : CGAL::vertices(result_mesh))
-        hv->_label = out_labels[count++]; 
+    if (!output_path.ends_with('/')) {
+        output_path = output_path + '/';
+    }
+    GenFakeToothRoot(vertices.data(), scanmesh.size_of_vertices(), indices.data(), scanmesh.size_of_facets(), labels.data(), frame_json.c_str(), output_path.c_str(), &out_vertices, &out_indices, &out_labels, &nb_out_vertices, &nb_out_faces);
 
-    std::ofstream ofs(output_path, std::ios::binary);
-    CGAL::IO::set_binary_mode(ofs);
-    CGAL::IO::write_PLY(ofs, result_mesh);
+//    std::vector<Point_3> out_points;
+//    std::vector<size_t> out_faces;
+//    for(unsigned i = 0; i < nb_out_vertices; i++)
+//        out_points.emplace_back(out_vertices[i * 3], out_vertices[i * 3 + 1], out_vertices[i * 3 + 2]);
+//    for(unsigned i = 0; i < nb_out_faces * 3; i++)
+//        out_faces.push_back(out_indices[i]);
+//
+//    std::cout << out_points.size() << " " << out_faces.size() << std::endl;
+//    Polyhedron result_mesh;
+//    result_mesh.BuildFromVerticesIndices(out_points, out_faces);
+//    int count = 0;
+//    for(auto hv : CGAL::vertices(result_mesh))
+//        hv->_label = out_labels[count++];
+//
+//    std::ofstream ofs(output_path, std::ios::binary);
+//    CGAL::IO::set_binary_mode(ofs);
+//    CGAL::IO::write_PLY(ofs, result_mesh);
 
     delete[] out_vertices;
     delete[] out_indices;
