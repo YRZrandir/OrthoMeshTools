@@ -662,7 +662,6 @@ public:
         {
             postfix = "stlb";
         }
-        //Assimp::ExportProperties prop;
         if(exporter.Export(scene.get(), postfix, path) != aiReturn_SUCCESS)
         {
             throw IOError("Failed to write assimp mesh to: " + path);

@@ -41,21 +41,28 @@ bool FixMeshFile(
     bool refine,
     int max_retry)
 {
-    std::vector<KernelEpick::Point_3> vertices;
-    std::vector<Triangle> faces;
-    LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
-    if(gVerbose)
+    try
     {
-        printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
+        std::vector<KernelEpick::Point_3> vertices;
+        std::vector<Triangle> faces;
+        LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
+        if(gVerbose)
+        {
+            printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
+        }
+        Polyhedron result;
+        FixMesh<Polyhedron>(vertices, faces, result, keep_largest_connected_component,
+        large_cc_threshold, fix_self_intersection,
+        filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
+        result.WriteAssimp(output_mesh);
+        if(gVerbose)
+        {
+            printf("Output V = %zd, F = %zd.\n", result.size_of_vertices(), result.size_of_facets());
+        }
     }
-    Polyhedron result;
-    FixMesh<Polyhedron>(vertices, faces, result, keep_largest_connected_component,
-     large_cc_threshold, fix_self_intersection,
-      filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
-    result.WriteAssimp(output_mesh);
-    if(gVerbose)
+    catch(const std::exception& e)
     {
-        printf("Output V = %zd, F = %zd.\n", result.size_of_vertices(), result.size_of_facets());
+        std::cout << e.what() << std::endl;
     }
     return true;
 }

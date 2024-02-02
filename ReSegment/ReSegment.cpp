@@ -5,7 +5,9 @@
 #include <CGAL/AABB_tree.h>
 #include <CGAL/AABB_face_graph_triangle_primitive.h>
 #include <CGAL/AABB_traits.h>
+#include <CGAL/boost/graph/copy_face_graph.h>
 #include <CGAL/boost/graph/io.h>
+#include <CGAL/boost/graph/Face_filtered_graph.h>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Surface_mesh_shortest_path.h>
 #include <CGAL/version.h>
@@ -15,7 +17,7 @@
 #include <pybind11/pybind11.h>
 #endif
 
-//#define DEBUG_OUTPUT
+#define DEBUG_OUTPUT
 namespace
 {
     using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
@@ -184,18 +186,15 @@ namespace
                 q.pop();
                 for (auto nei : CGAL::faces_around_face(front_facet->halfedge(), mesh))
                 {
-                    if (processed_faces.contains(nei))
-                        continue;
-                    if (nei == to)
+                    if(nei == nullptr || processed_faces.contains(nei))
                     {
-                        found = true;
-                        break;
+                        continue;
                     }
                     q.push(nei);
                     processed_faces.insert(nei);
+                    if (nei == to)
+                        found = true;
                 }
-                if (found)
-                    break;
             }
             dfs_range++;
             if (found)
@@ -204,11 +203,54 @@ namespace
             }
         }
 
+        Polyhedron submesh;
+        CGAL::Face_filtered_graph<Polyhedron> filtered_graph(mesh, processed_faces);
+        std::unordered_map<typename Polyhedron::Facet_handle, typename Polyhedron::Facet_handle> f_map;
+        CGAL::copy_face_graph(filtered_graph, submesh, CGAL::parameters::face_to_face_map(boost::make_assoc_property_map(f_map)));
+        CGAL::set_halfedgeds_items_id(submesh);
+        std::unordered_map<typename Polyhedron::Facet_handle, typename Polyhedron::Facet_handle> inv_f_map;
+        for(auto [src, tar] : f_map)
+        {
+            inv_f_map.insert({tar, src});
+        }
+        using SPTraits = CGAL::Surface_mesh_shortest_path_traits<typename Polyhedron::Traits::Kernel, Polyhedron>;
+        struct Sequence_collector
+        {
+            std::vector<typename Polyhedron::Facet_handle> sequence;
+            Polyhedron& mesh;
+
+            Sequence_collector(Polyhedron& _mesh) : mesh(_mesh) {};
+
+            void operator()(typename Polyhedron::Halfedge_handle he, double alpha)
+            {
+                if(he->facet() != nullptr)
+                    sequence.push_back(he->facet());
+                if(he->opposite()->facet() != nullptr)
+                    sequence.push_back(he->opposite()->facet());
+            }
+            void operator()(typename Polyhedron::Vertex_handle v)
+            {
+                for(auto nei : CGAL::faces_around_target(v->halfedge(), mesh))
+                {
+                    if(nei != nullptr)
+                        sequence.push_back(nei);
+                }
+            }
+            void operator()(typename Polyhedron::Facet_handle f, SPTraits::Barycentric_coordinates alpha)
+            {
+                sequence.push_back(f);
+            }
+        };
+        CGAL::Surface_mesh_shortest_path<SPTraits> shortest_path(submesh);
+        shortest_path.add_source_point(f_map.at(from), SPTraits::Barycentric_coordinate({0.33, 0.33, 0.34}));
+        Sequence_collector sc(submesh);
+        shortest_path.shortest_path_sequence_to_source_points(f_map.at(to), SPTraits::Barycentric_coordinate({0.33, 0.33, 0.34}), sc);
+
         std::vector<hFacet> path;
-        path.push_back(from);
-        processed_faces.clear();
-        processed_faces.insert(from);
-        Backtracking(to, mesh, path, processed_faces, dfs_range + 1);
+        for(auto hf : sc.sequence)
+        {
+            path.push_back(inv_f_map[hf]);
+        }
         return path;
     }
 
@@ -271,7 +313,6 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
             aabb_tree.all_intersected_primitives(t1, std::back_inserter(this_intersect_faces));
 
             if (!IsConnectedComponent(this_intersect_faces.begin(), this_intersect_faces.end(), mesh))
-            //if(false)
             {
                 auto path = FindPath(hf0, hf1, mesh);
                 for (auto hf : path)
@@ -436,7 +477,7 @@ int main(int argc, char *argv[])
     // std::cout << "Not implemented. Please use python interface." << std::endl;
     // return 0;
     std::cout << std::format("CGAL: {}", CGAL_STR(CGAL_VERSION)) << std::endl;
-    std::filesystem::current_path("../../test/reseg/");
+    std::filesystem::current_path("../../test/reseg2/");
     // std::ifstream ifs("../../test/case1/seg.json");
     // nlohmann::json json = nlohmann::json::parse(ifs);
     // ifs.close();
@@ -449,7 +490,7 @@ int main(int argc, char *argv[])
     splitline_labels.push_back(35);
 
     {
-        std::ifstream ifs("test_boundary_35.xyz");
+        std::ifstream ifs("points.xyz");
         std::vector<double> xyz;
         while (ifs)
         {
@@ -460,7 +501,7 @@ int main(int argc, char *argv[])
         splitlines[0].push_back(xyz);
     }
 
-    ReSegmentLabels("oral_scan_L.ply", splitlines, splitline_labels, "out.json", 0.2, 5, false);
+    ReSegmentLabels("oral_scan_U.obj", splitlines, splitline_labels, "out.json", 0.2, 5, false);
     return 0;
 }
 #endif
