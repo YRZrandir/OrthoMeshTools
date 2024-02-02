@@ -90,7 +90,7 @@ void LoadLabels( Polyhedron& mesh, std::string path )
         int l1 = hf->halfedge()->next()->vertex()->_label;
         int l2 = hf->halfedge()->prev()->vertex()->_label;
         if(l0 == l1 && l1 == l2)
-            hf->_label == l0;
+            hf->_label = l0;
         else 
             hf->_label = 0;
     }
@@ -428,21 +428,10 @@ void ProcessOneToothLaplacian( Polyhedron& m, Point_3 centroid, Vector_3 up, int
 
     Point_3 center = CGAL::midpoint(CGAL::midpoint(target->halfedge()->vertex()->point(), target->halfedge()->next()->vertex()->point()), target->halfedge()->prev()->vertex()->point());
     double max_dist = 0.0;
-    // for(auto hv : patch_vertices)
-    // {
-    //     double dist = std::sqrt(CGAL::squared_distance(center, hv->point()));
-    //     max_dist = std::max(max_dist, dist);
-    // }
-    // for(auto hv : patch_vertices)
-    // {
-    //     double dist = std::sqrt(CGAL::squared_distance(center, hv->point()));
-    //     hv->point() += up * (1.0 - dist / max_dist) * 7.0;
-    // }
 
     CGAL::set_halfedgeds_items_id(m);
 
     CGAL::Surface_mesh_deformation<Polyhedron> deform_mesh(m);
-
     deform_mesh.set_sre_arap_alpha(1.0);
 
     float r = 1.5f;
@@ -500,12 +489,74 @@ void ProcessOneToothLaplacian( Polyhedron& m, Point_3 centroid, Vector_3 up, int
     }
 }
 
+void ExportToothGroup(const std::vector<Polyhedron>& meshes, const std::vector<int>& labels, const std::string path)
+{
+    Assimp::Exporter exporter;
+    auto scene = std::make_unique<aiScene>();
+
+    scene->mRootNode = new aiNode();
+    scene->mRootNode->mNumMeshes = meshes.size();
+    scene->mRootNode->mMeshes = new uint32_t[meshes.size()];
+    for(size_t i = 0; i < meshes.size(); i++)
+    {
+        scene->mRootNode->mMeshes[i] = i;
+    }
+
+    scene->mNumMaterials = 1;
+    scene->mMaterials = new aiMaterial*[]{ new aiMaterial() };
+    scene->mMetaData = new aiMetadata();
+
+    scene->mNumMeshes = meshes.size();
+    scene->mMeshes = new aiMesh*[meshes.size()];
+
+    for(size_t i = 0; i < meshes.size(); i++)
+    {
+        scene->mMeshes[i] = new aiMesh();
+        auto [vertices, faces] = meshes[i].ToVerticesTriangles();
+
+        aiMesh* m = scene->mMeshes[0];
+        m->mNumFaces = static_cast<uint32_t>(faces.size());
+        m->mNumVertices = static_cast<uint32_t>(vertices.size());
+        m->mVertices = new aiVector3D[m->mNumVertices];
+        m->mColors[0] = new aiColor4D[m->mNumVertices];
+        m->mFaces = new aiFace[m->mNumFaces];
+        m->mPrimitiveTypes = aiPrimitiveType_TRIANGLE;
+
+        for(size_t i = 0; i < m->mNumVertices; i++)
+        {
+            m->mVertices[i] = aiVector3D(
+                static_cast<ai_real>(vertices[i].x()),
+                static_cast<ai_real>(vertices[i].y()),
+                static_cast<ai_real>(vertices[i].z()));
+        }
+
+        for(size_t i = 0; i < m->mNumFaces; i++)
+        {
+            m->mFaces[i].mNumIndices = 3;
+            m->mFaces[i].mIndices = new unsigned int[m->mFaces[i].mNumIndices];
+            m->mFaces[i].mIndices[0] = static_cast<unsigned int>(faces[i][0]);
+            m->mFaces[i].mIndices[1] = static_cast<unsigned int>(faces[i][1]);
+            m->mFaces[i].mIndices[2] = static_cast<unsigned int>(faces[i][2]);
+        }
+    }
+
+    std::string postfix = path.substr(path.rfind('.') + 1);
+    if(postfix == std::string("ply"))
+    {
+        postfix = "plyb";
+    }
+    else if (postfix == std::string("stl"))
+    {
+        postfix = "stlb";
+    }
+    exporter.Export(scene.get(), postfix, path);    
+}
+
 }
 extern "C"
 {
 void GenFakeToothRoot(const float* vertices, const unsigned nb_vertices, const unsigned* indices, unsigned nb_faces, const unsigned* labels, const char* frame_json,
  float** out_vertices, unsigned** out_indices, unsigned** out_labels, unsigned* nb_out_vertices, unsigned* nb_out_faces)
-
 {
     std::vector<Point_3> points;
     std::vector<typename Polyhedron::Vertex::size_type> faces;
@@ -586,86 +637,11 @@ void GenFakeToothRoot(const float* vertices, const unsigned nb_vertices, const u
 }
 }
 
-void Run(int argc, char* argv[])
+void FakeToothRoot(std::string input_path, std::string output_path, std::string frame_path, std::string label_path)
 {
-    std::string input_path;
-    std::string output_path;
-    std::string frame_path;
-    std::string label_path;
-    for(int i = 1; i < argc; i++)
-    {
-        if(std::strcmp(argv[i], "-i") == 0)
-        {
-            input_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-o") == 0)
-        {
-            output_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-f") == 0)
-        {
-            frame_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-l") == 0)
-        {
-            label_path = std::string(argv[i+1]);
-        }
-    }
-
-    Polyhedron scanmesh;
-    CGAL::IO::read_OBJ(input_path, scanmesh);
-    scanmesh.LoadLabels(label_path);
-    auto frames = LoadToothFrames(frame_path);
-    auto meshes = SplitByLabel(scanmesh);
-    for(int i = 0; i < meshes.size(); i++)
-    {
-        auto& m = meshes[i];
-        int label = m.vertices_begin()->_label;
-        ProcessOneTooth(m, frames[label].centroid, frames[label].up, label);
-    }
-
-    Polyhedron result_mesh;
-    for(auto& m : meshes)
-    {
-        std::unordered_map<hVertex, hVertex> v2v;
-        CGAL::copy_face_graph(m, result_mesh, CGAL::parameters::vertex_to_vertex_map(boost::make_assoc_property_map(v2v)));
-        for(auto& [vs, vt] : v2v)
-            vt->_label = vs->_label;
-    }
-
-    result_mesh.WriteOBJ(output_path);
-}
-
-#ifndef FOUND_PYBIND11
-int main(int argc, char* argv[])
-{
-    std::string input_path;
-    std::string output_path;
-    std::string frame_path;
-    std::string label_path;
-    for(int i = 1; i < argc; i++)
-    {
-        if(std::strcmp(argv[i], "-i") == 0)
-        {
-            input_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-o") == 0)
-        {
-            output_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-f") == 0)
-        {
-            frame_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-l") == 0)
-        {
-            label_path = std::string(argv[i+1]);
-        }
-    }
     Polyhedron scanmesh;
     CGAL::IO::read_polygon_mesh(input_path, scanmesh);
     LoadLabels(scanmesh, label_path);
-    //scanmesh.WriteOBJ("../../test/test1.obj");
 
     auto [points, indices1] = scanmesh.ToVerticesIndices();
     std::vector<float> vertices;
@@ -714,6 +690,35 @@ int main(int argc, char* argv[])
     delete[] out_vertices;
     delete[] out_indices;
     delete[] out_labels;
+}
+
+#ifndef FOUND_PYBIND11
+int main(int argc, char* argv[])
+{
+    std::string input_path;
+    std::string output_path;
+    std::string frame_path;
+    std::string label_path;
+    for(int i = 1; i < argc; i++)
+    {
+        if(std::strcmp(argv[i], "-i") == 0)
+        {
+            input_path = std::string(argv[i+1]);
+        }
+        if(std::strcmp(argv[i], "-o") == 0)
+        {
+            output_path = std::string(argv[i+1]);
+        }
+        if(std::strcmp(argv[i], "-f") == 0)
+        {
+            frame_path = std::string(argv[i+1]);
+        }
+        if(std::strcmp(argv[i], "-l") == 0)
+        {
+            label_path = std::string(argv[i+1]);
+        }
+    }
+    FakeToothRoot(input_path, output_path, frame_path, label_path);
     return 0;
 }
 #endif

@@ -9,7 +9,7 @@ option(BUILD_EXECUTABLES "" OFF)
 option(BUILD_PYTHON_LIB "" ON)
 
 add_compile_definitions(NOMINMAX)
-
+add_compile_options("/EHsc")
 find_package(Eigen3 REQUIRED)
 find_package(CGAL REQUIRED)
 find_package(OpenMP REQUIRED)
