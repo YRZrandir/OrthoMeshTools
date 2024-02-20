@@ -672,6 +672,52 @@ void Optimize(Polyhedron &mesh)
     mesh.UpdateFaceLabels();
 }
 
+std::vector<std::array<std::pair<int, float>, 3>> ComputeDeformWeights(const Polyhedron& gum_mesh, const CrownFrames<KernelEpick>& crown_frames, bool upper)
+{
+    int label_start = upper ? 11 : 31;
+    int label_end = upper ? 28 : 48;
+    std::vector<std::array<std::pair<int, float>, 3>> weight_table;
+    for(auto hv : CGAL::vertices(gum_mesh))
+    {
+        auto p = hv->point();
+        std::vector<std::pair<int, float>> weights;
+        for(int label = label_start; label <= label_end; label++)
+        {
+            if(crown_frames.Frames().count(label) == 0)
+                continue;
+            auto frame_center = crown_frames.GetFrame(label).pos;
+            auto frame_dir = crown_frames.GetFrame(label).up;
+            double dist_to_frame = CGAL::squared_distance( KernelEpick::Line_3{ frame_center, frame_dir }, p );
+            weights.emplace_back(label, dist_to_frame);
+        }
+
+        std::sort(weights.begin(), weights.end(), [](auto& lh, auto& rh){ return lh.second < rh.second; });
+        std::array<std::pair<int, float>, 3> weight_table_this;
+        weight_table_this.fill({0, 0});
+        if(weights[0].second < 1e-8f)
+        {
+            weight_table_this[0] = {weights[0].first, 1.0};
+        }
+        else
+        {
+            float w_sum = 0.f;
+            for(int i = 0; i < 3 && i < weights.size(); i++)
+            {
+                float w = weights[i].second;
+                w = std::exp(-w * w / 25.0);
+                weight_table_this[i] = {weights[i].first, w};
+                w_sum += weight_table_this[i].second;
+            }
+            for(auto& [label, w] : weight_table_this)
+                if(label != 0)
+                    w /= w_sum;
+        }
+        weight_table.push_back(weight_table_this);
+    }
+
+    return weight_table;
+}
+
 void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Polyhedron& mesh)
 {
     std::cout << "Creating gum..." << std::endl;
@@ -814,6 +860,21 @@ void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Po
 
     mesh.WriteOBJ(output_gum);
     mesh.WriteLabels(output_gum.substr(0, output_gum.rfind('.')) + ".json");
+
+    std::cout << "Compute weights..." << std::endl;
+    auto weights = ComputeDeformWeights(mesh, crown_frames, upper);
+    {
+        std::ofstream ofs;
+        std::string weight_name;
+        if( output_gum.rfind('.') == std::string::npos)
+            ofs.open(output_gum + "_w.json");
+        else 
+            ofs.open(output_gum.substr(0, output_gum.rfind('.')) + "_w.json");
+        nlohmann::json json;
+        json["weights"] = weights;
+        ofs << json;
+    }
+
     std::cout << "Done." << std::endl;
 }
 
