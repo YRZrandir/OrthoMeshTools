@@ -1,5 +1,4 @@
 #include <iostream>
-#include <argparse/argparse.hpp>
 #include <CGAL/boost/graph/io.h>
 #include <CGAL/boost/graph/Face_filtered_graph.h>
 #include <CGAL/Eigen_solver_traits.h>
@@ -20,6 +19,11 @@
 #include "../MeshFix/MeshFix.h"
 #include "../EasyOBJ.h"
 #include "../SegClean/SegClean.h"
+
+#ifndef FOUND_PYBIND11
+#include <argparse/argparse.hpp>
+#endif
+
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
 using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
 
@@ -878,6 +882,7 @@ void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Po
     std::cout << "Done." << std::endl;
 }
 
+#ifndef FOUND_PYBIND11
 int main(int argc, char *argv[])
 {
     argparse::ArgumentParser parser;
@@ -969,3 +974,4 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+#endif

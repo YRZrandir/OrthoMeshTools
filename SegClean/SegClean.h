@@ -4,7 +4,7 @@
 #include <queue>
 #include "../Polyhedron.h"
 
-bool SegClean(std::string input_mesh, std::string input_labels, std::string output_labels, int size_threshold);
+bool SegCleanF(std::string input_mesh, std::string input_labels, std::string output_labels, int size_threshold);
 
 template <typename Polyhedron>
 std::vector<typename Polyhedron::Vertex_handle> ConnectedComponents(typename Polyhedron::Vertex_handle hv, Polyhedron &mesh)

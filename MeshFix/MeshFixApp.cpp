@@ -1,4 +1,6 @@
 #include "MeshFix.h"
+
+#ifndef FOUND_PYBIND11
 #include <argparse/argparse.hpp>
 
 extern bool gVerbose;
@@ -79,3 +81,4 @@ int main(int argc, char* argv[])
     }
     return 0;
 }
+#endif

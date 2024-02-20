@@ -7,6 +7,7 @@
 #include "MeshFix/MeshFix.h"
 #include "ReSegment/ReSegment.h"
 #include "SegClean/SegClean.h"
+#include "FakeToothRoot/FakeToothRoot.h"
 #include "Polyhedron.h"
 
 namespace py = pybind11;
@@ -20,7 +21,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("input_labels"),
         py::arg("output_mesh"));
 
-    m.def("SegClean", &SegClean,
+    m.def("SegClean", &SegCleanF,
         "Try to make sure each label is applied to single connected component. Areas that are smaller than size_threshold are processsed.",
         py::arg("input_mesh"),
         py::arg("input_labels"),
@@ -74,6 +75,12 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("output_file"),
         py::arg("smooth"),
         py::arg("fix_factor"));
+
+    m.def("FakeToothRoot", &FakeToothRoot, "Generate fake tooth root for tooth crowns",
+        py::arg("input_mesh"),
+        py::arg("output_path"),
+        py::arg("frame_path"),
+        py::arg("label_path"));
 
     py::register_local_exception<IOError>(m, "IOError");
     py::register_local_exception<MeshError>(m, "MeshError");

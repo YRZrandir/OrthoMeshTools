@@ -1,8 +1,11 @@
 #include "OrthoScanDeform.h"
 #include <vector>
 #include <unordered_map>
-#include <argparse/argparse.hpp>
 #include <CGAL/boost/graph/io.h>
+
+#ifndef FOUND_PYBIND11
+#include <argparse/argparse.hpp>
+#endif
 
 template <typename Kernel>
 std::vector<CrownFrames<Kernel>> LoadPaths( const std::string& path )
@@ -151,6 +154,7 @@ public:
     };
 };
 
+#ifndef FOUND_PYBIND11
 int main(int argc, char* argv[])
 {
     Eigen::Matrix3f m0;
@@ -305,3 +309,4 @@ int main(int argc, char* argv[])
     }
     return 0;
 }
+#endif
