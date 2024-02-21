@@ -8,6 +8,7 @@
 #include "ReSegment/ReSegment.h"
 #include "SegClean/SegClean.h"
 #include "FakeToothRoot/FakeToothRoot.h"
+#include "OrthoScanBase/OrthoScanBase.h"
 #include "Polyhedron.h"
 
 namespace py = pybind11;
@@ -27,7 +28,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("input_labels"),
         py::arg("output_labels"),
         py::arg("size_threshold"));
-    
+
     m.def("FixMesh", &FixMeshFile, "Fix non-manifold vertices & edges",
         py::arg("path"),
         py::arg("output_path"),
@@ -81,6 +82,12 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("output_path"),
         py::arg("frame_path"),
         py::arg("label_path"));
+
+    m.def("GenerateGum", &GenerateGumApi, "Generate fake gum",
+        py::arg("input_file"),
+        py::arg("input_label"),
+        py::arg("crown_frame"),
+        py::arg("output_gum"));
 
     py::register_local_exception<IOError>(m, "IOError");
     py::register_local_exception<MeshError>(m, "MeshError");
