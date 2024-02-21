@@ -607,6 +607,8 @@ public:
             aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
             aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
         };
+        std::string postfix = path.substr(path.rfind('.') + 1);
+        bool has_color = postfix == std::string("obj");
         CGAL::set_halfedgeds_items_id(*this);
         Assimp::Exporter exporter;
         auto scene = std::make_unique<aiScene>();
@@ -628,7 +630,10 @@ public:
         m->mNumFaces = static_cast<uint32_t>(this->size_of_facets());
         m->mNumVertices = static_cast<uint32_t>(this->size_of_vertices());
         m->mVertices = new aiVector3D[m->mNumVertices];
-        m->mColors[0] = new aiColor4D[m->mNumVertices];
+        if(has_color)
+        {
+            m->mColors[0] = new aiColor4D[m->mNumVertices];
+        }
         m->mFaces = new aiFace[m->mNumFaces];
         m->mPrimitiveTypes = aiPrimitiveType_TRIANGLE;
 
@@ -639,7 +644,10 @@ public:
                 static_cast<ai_real>(hv->point().x()),
                 static_cast<ai_real>(hv->point().y()),
                 static_cast<ai_real>(hv->point().z()));
-            m->mColors[0][i] = COLORS[hv->_label % COLORS.size()];
+            if(has_color)
+            {
+                m->mColors[0][i] = COLORS[hv->_label % COLORS.size()];
+            }
         }
 
         auto hf = this->facets_begin();
@@ -652,7 +660,6 @@ public:
             m->mFaces[i].mIndices[2] = static_cast<unsigned int>(hf->halfedge()->prev()->vertex()->id());
         }
 
-        std::string postfix = path.substr(path.rfind('.') + 1);
         
         if(postfix == std::string("ply"))
         {
