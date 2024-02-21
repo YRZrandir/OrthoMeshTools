@@ -974,4 +974,71 @@ int main(int argc, char *argv[])
 
     return 0;
 }
+
+#else
+int GenerateGumApi(std::string input_file, std::string input_label, std::string crown_frame, std::string output_gum)
+{
+    Polyhedron mesh;
+    if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
+    {
+        try
+        {
+            printf("possible invalid mesh, try fixing...\n");
+            std::vector<typename Polyhedron::Traits::Point_3> vertices;
+            std::vector<TTriangle<size_t>> faces;
+            if(input_file.ends_with(".obj"))
+            {
+                LoadVFObj<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            }
+            else
+            {
+                // TODO: add custom file loading function for more formats, since assimp cannot keep vertex order sometimes.
+                LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            }
+            std::vector<int> labels = LoadLabels(input_label);
+            FixMeshWithLabel(vertices, faces, labels, mesh, true, 9999, false, false, 0, 0, false, 10);
+        }
+        catch(const std::exception&)
+        {
+            throw IOError("Cannot read mesh file or mesh invalid: " + input_file);
+        }
+    }
+    else
+    {
+        mesh.LoadLabels(input_label);
+        //mesh.UpdateFaceLabels2();
+    }
+    LabelProcessing(mesh);
+    SegClean(mesh);
+
+    bool upper = true;
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(hv->_label >= 11 && hv->_label <= 29)
+            break;
+        else if(hv->_label >= 31 && hv->_label <= 49)
+        {
+            upper = false;
+            break;
+        }
+    }
+    try
+    {
+        std::cout << "Optimizing...";
+        Optimize(mesh);
+        std::cout << "Done." << std::endl;
+        std::cout << "Generating...";
+        GenerateBase2(mesh);
+        std::cout << "Done." << std::endl;
+
+        GenerateGum(output_gum, crown_frame, upper, mesh);
+    }
+    catch(const std::exception& e)
+    {
+        std::cout << e.what() << std::endl;
+    }
+
+    return 0;
+}
+
 #endif

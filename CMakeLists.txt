@@ -30,7 +30,7 @@ if(BUILD_PYTHON_LIB)
     if(pybind11_FOUND)
         add_compile_definitions(FOUND_PYBIND11)
         pybind11_add_module(OrthoMeshTools SHARED "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
-        "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp")
+        "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp"  "OrthoScanBase/OrthoScanBase.cpp")
         target_link_libraries(OrthoMeshTools PUBLIC Ortho pybind11::module)
         target_compile_definitions(OrthoMeshTools PUBLIC FOUND_PYBIND11)
     else()
