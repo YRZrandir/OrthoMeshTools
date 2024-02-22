@@ -722,6 +722,120 @@ std::vector<std::array<std::pair<int, float>, 3>> ComputeDeformWeights(const Pol
     return weight_table;
 }
 
+std::vector<std::array<std::pair<int, float>, 3>> ComputeDeformWeightsGeoDist(const Polyhedron& gum_mesh, const CrownFrames<KernelEpick>& crown_frames, bool upper)
+{
+    std::array<bool, 50> has_label;
+    std::fill(has_label.begin(), has_label.end(), false);
+    for(auto hv : CGAL::vertices(gum_mesh))
+    {
+        if(hv->_label > 10 || hv->_label == 1)
+        {
+            has_label[hv->_label] = true;
+        }
+    }
+    std::vector<int> all_labels;
+    for(int label = 1; label < 50; label++)
+    {
+        if(has_label[label])
+        {
+            all_labels.push_back(label);
+        }
+    }
+
+    using LA = CGAL::Eigen_solver_traits<Eigen::SimplicialLDLT<typename CGAL::Eigen_sparse_matrix<double>::EigenType>>;
+    using HeatMethod = CGAL::Heat_method_3::Surface_mesh_geodesic_distances_3<Polyhedron, CGAL::Heat_method_3::Direct,
+                                                                              typename boost::property_map<Polyhedron, CGAL::vertex_point_t>::const_type, LA, Polyhedron::Traits::Kernel>;    
+    std::unordered_map<int, std::unordered_map<typename Polyhedron::Vertex_handle, double>> dist_to_label;
+#pragma omp parallel for
+    for(int i = 0; i < all_labels.size(); i++)
+    {
+        int label = all_labels[i];
+        std::unordered_map<typename Polyhedron::Vertex_handle, double> distances;
+        HeatMethod heat_method(gum_mesh);
+        for(auto hv : CGAL::vertices(gum_mesh))
+        {
+            if(hv->_label == label)
+                heat_method.add_source(hv);
+        }
+        heat_method.estimate_geodesic_distances(boost::make_assoc_property_map(distances));
+#pragma omp critical
+{
+        std::cout << "geo dist " << label << std::endl;
+        dist_to_label.insert({label, std::move(distances)});
+}
+    }
+
+    std::vector<std::array<std::pair<int, float>, 3>> weights_table;
+    for(auto hv : CGAL::vertices(gum_mesh))
+    {
+        std::array<std::pair<int, float>, 3> v_weights;
+        std::fill(v_weights.begin(), v_weights.end(), std::pair<int, float>(0, 0.f));
+        if(hv->_label == 1)
+        {
+            v_weights[0] = {1, 1.f};
+            v_weights[1] = {1, 0.f};
+            v_weights[2] = {1, 0.f};
+        }
+        else if(hv->_label > 10)
+        {
+            v_weights[0] = {hv->_label, 1.f};
+            v_weights[1] = {hv->_label, 0.f};
+            v_weights[2] = {hv->_label, 0.f};
+        }
+        else
+        {
+            std::vector<std::pair<int, float>> label_dist_pairs;
+            for(int label = 1; label < 50; label++)
+            {
+                if(dist_to_label.count(label) == 0 || dist_to_label.at(label).count(hv) == 0)
+                    continue;
+                label_dist_pairs.push_back({label, dist_to_label.at(label).at(hv)});
+            }
+            std::sort(label_dist_pairs.begin(), label_dist_pairs.end(), [](auto& lh, auto& rh){ return lh.second < rh.second; });
+            label_dist_pairs.resize(v_weights.size());
+            float w_sum = 0.f;
+            for(int i = 0; i < v_weights.size(); i++)
+            {
+                v_weights[i].first = label_dist_pairs[i].first;
+                v_weights[i].second = std::exp(-label_dist_pairs[i].second * label_dist_pairs[i].second / 10.f);
+                w_sum += v_weights[i].second;
+            }
+            for(auto& [_, w] : v_weights)
+                w /= w_sum;
+        }
+        weights_table.push_back(v_weights);
+    }
+//#define DEBUG_WEIGHTS
+#ifdef DEBUG_WEIGHTS
+    std::ofstream ofs("./weighted_v.obj");
+    int i = 0;
+    for(auto hv : CGAL::vertices(gum_mesh))
+    {
+        auto& weights = weights_table[i];
+        auto p = hv->point();
+        static const std::array<Eigen::Vector3f, 10> COLORS = {
+            Eigen::Vector3f{142.0f / 255, 207.0f / 255, 201.0f / 255},
+            Eigen::Vector3f{255.0f / 255, 190.0f / 255, 122.0f / 255},
+            Eigen::Vector3f{250.0f / 255, 127.0f / 255, 111.0f / 255},
+            Eigen::Vector3f{130.0f / 255, 176.0f / 255, 210.0f / 255},
+            Eigen::Vector3f{190.0f / 255, 184.0f / 255, 220.0f / 255},
+            Eigen::Vector3f{40.0f / 255, 120.0f / 255, 181.0f / 255},
+            Eigen::Vector3f{248.0f / 255, 172.0f / 255, 140.0f / 255},
+            Eigen::Vector3f{255.0f / 255, 136.0f / 255, 132.0f / 255},
+            Eigen::Vector3f{84.0f / 255, 179.0f / 255, 69.0f / 255},
+            Eigen::Vector3f{137.0f / 255, 131.0f / 255, 191.0f / 255}
+        };
+        Eigen::Vector3f c = COLORS[weights[0].first % 10] * weights[0].second;
+        c += COLORS[weights[1].first % 10] * weights[1].second;
+        c += COLORS[weights[2].first % 10] * weights[2].second;
+
+        ofs << "v " << p.x() << ' ' << p.y() << ' ' << p.z() << ' ' << c.x() << ' ' << c.y() << ' ' << c.z() << '\n';
+        i++;
+    }
+#endif
+    return weights_table;
+}
+
 void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Polyhedron& mesh)
 {
     std::cout << "Creating gum..." << std::endl;
@@ -866,7 +980,7 @@ void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Po
     mesh.WriteLabels(output_gum.substr(0, output_gum.rfind('.')) + ".json");
 
     std::cout << "Compute weights..." << std::endl;
-    auto weights = ComputeDeformWeights(mesh, crown_frames, upper);
+    auto weights = ComputeDeformWeightsGeoDist(mesh, crown_frames, upper);
     {
         std::ofstream ofs;
         std::string weight_name;
