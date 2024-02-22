@@ -71,4 +71,7 @@ if(BUILD_EXECUTABLES)
 
     add_executable(FakeToothRoot "FakeToothRoot/FakeToothRoot.cpp" "FakeToothRoot/FakeToothRoot.h" "MeshFix/MeshFix.cpp")
     target_link_libraries(FakeToothRoot PUBLIC Ortho argparse::argparse)
+
+    add_executable(MoveTeeth "MoveTeeth/MoveTeeth.cpp")
+    target_link_libraries(MoveTeeth PUBLIC Ortho argparse::argparse)
 endif()
