@@ -994,18 +994,6 @@ namespace internal
         result_curve.InsertAt(midcurve2, result_curve.size());
 
         //std::ofstream ofs("./merge.obj");
-        static const std::array<std::array<float, 3>, 10> COLORS = {
-            std::array<float, 3>{142.0f / 255, 207.0f / 255, 201.0f / 255},
-            std::array<float, 3>{255.0f / 255, 190.0f / 255, 122.0f / 255},
-            std::array<float, 3>{250.0f / 255, 127.0f / 255, 111.0f / 255},
-            std::array<float, 3>{130.0f / 255, 176.0f / 255, 210.0f / 255},
-            std::array<float, 3>{190.0f / 255, 184.0f / 255, 220.0f / 255},
-            std::array<float, 3>{40.0f / 255, 120.0f / 255, 181.0f / 255},
-            std::array<float, 3>{248.0f / 255, 172.0f / 255, 140.0f / 255},
-            std::array<float, 3>{255.0f / 255, 136.0f / 255, 132.0f / 255},
-            std::array<float, 3>{84.0f / 255, 179.0f / 255, 69.0f / 255},
-            std::array<float, 3>{137.0f / 255, 131.0f / 255, 191.0f / 255}
-        };
         // for (size_t i = 0; i < result_curve.size(); i++)
         // {
         //     //std::array<float, 3> c = COLORS[result_curve.Label(i) % COLORS.size()];

@@ -813,22 +813,9 @@ std::vector<std::array<std::pair<int, float>, 3>> ComputeDeformWeightsGeoDist(co
     {
         auto& weights = weights_table[i];
         auto p = hv->point();
-        static const std::array<Eigen::Vector3f, 10> COLORS = {
-            Eigen::Vector3f{142.0f / 255, 207.0f / 255, 201.0f / 255},
-            Eigen::Vector3f{255.0f / 255, 190.0f / 255, 122.0f / 255},
-            Eigen::Vector3f{250.0f / 255, 127.0f / 255, 111.0f / 255},
-            Eigen::Vector3f{130.0f / 255, 176.0f / 255, 210.0f / 255},
-            Eigen::Vector3f{190.0f / 255, 184.0f / 255, 220.0f / 255},
-            Eigen::Vector3f{40.0f / 255, 120.0f / 255, 181.0f / 255},
-            Eigen::Vector3f{248.0f / 255, 172.0f / 255, 140.0f / 255},
-            Eigen::Vector3f{255.0f / 255, 136.0f / 255, 132.0f / 255},
-            Eigen::Vector3f{84.0f / 255, 179.0f / 255, 69.0f / 255},
-            Eigen::Vector3f{137.0f / 255, 131.0f / 255, 191.0f / 255}
-        };
-        Eigen::Vector3f c = COLORS[weights[0].first % 10] * weights[0].second;
-        c += COLORS[weights[1].first % 10] * weights[1].second;
-        c += COLORS[weights[2].first % 10] * weights[2].second;
-
+        Eigen::Vector3f c = LabelColorMap(weights[0].first] * weights[0].second;
+        c += LabelColorMap(weights[1].first] * weights[1].second;
+        c += LabelColorMap(weights[2].first] * weights[2].second;
         ofs << "v " << p.x() << ' ' << p.y() << ' ' << p.z() << ' ' << c.x() << ' ' << c.y() << ' ' << c.z() << '\n';
         i++;
     }

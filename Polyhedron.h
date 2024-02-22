@@ -525,24 +525,12 @@ public:
 
     virtual void WriteOBJ(const std::string &path) override
     {
-        static const std::array<aiColor4D, 10> COLORS = {
-            aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
-            aiColor4D{255.0f / 255, 190.0f / 255, 122.0f / 255, 1.0},
-            aiColor4D{250.0f / 255, 127.0f / 255, 111.0f / 255, 1.0},
-            aiColor4D{130.0f / 255, 176.0f / 255, 210.0f / 255, 1.0},
-            aiColor4D{190.0f / 255, 184.0f / 255, 220.0f / 255, 1.0},
-            aiColor4D{40.0f / 255, 120.0f / 255, 181.0f / 255, 1.0},
-            aiColor4D{248.0f / 255, 172.0f / 255, 140.0f / 255, 1.0},
-            aiColor4D{255.0f / 255, 136.0f / 255, 132.0f / 255, 1.0},
-            aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
-            aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
-        };
         CGAL::set_halfedgeds_items_id(*this);
         std::stringstream ss;
         for (auto hv = this->vertices_begin(); hv != this->vertices_end(); hv++)
         {
-            aiColor4D c = COLORS[hv->_label % COLORS.size()];
-            ss << "v " << hv->point().x() << ' ' << hv->point().y() << ' ' << hv->point().z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+            auto c = LabelColorMap(hv->_label);
+            ss << "v " << hv->point().x() << ' ' << hv->point().y() << ' ' << hv->point().z() << ' ' << c[0] << ' ' << c[1] << ' ' << c[2] << '\n';
         }
         for (auto hf = this->facets_begin(); hf != this->facets_end(); hf++)
         {
@@ -561,18 +549,6 @@ public:
     
     void WriteTriSoup(const std::string& path)
     {
-        static const std::array<aiColor4D, 10> COLORS = {
-            aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
-            aiColor4D{255.0f / 255, 190.0f / 255, 122.0f / 255, 1.0},
-            aiColor4D{250.0f / 255, 127.0f / 255, 111.0f / 255, 1.0},
-            aiColor4D{130.0f / 255, 176.0f / 255, 210.0f / 255, 1.0},
-            aiColor4D{190.0f / 255, 184.0f / 255, 220.0f / 255, 1.0},
-            aiColor4D{40.0f / 255, 120.0f / 255, 181.0f / 255, 1.0},
-            aiColor4D{248.0f / 255, 172.0f / 255, 140.0f / 255, 1.0},
-            aiColor4D{255.0f / 255, 136.0f / 255, 132.0f / 255, 1.0},
-            aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
-            aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
-        };
         CGAL::set_halfedgeds_items_id(*this);
         std::stringstream ss;
         int vcount = 0;
@@ -581,7 +557,7 @@ public:
             auto v0 = hf->halfedge()->vertex()->point();
             auto v1 = hf->halfedge()->next()->vertex()->point();
             auto v2 = hf->halfedge()->prev()->vertex()->point();
-            auto c = COLORS[hf->_label % COLORS.size()];
+            auto c = LabeLColorMap(hf->_label);
             ss << "v " << v0.x() << ' ' << v0.y() << ' ' << v0.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
             ss << "v " << v1.x() << ' ' << v1.y() << ' ' << v1.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
             ss << "v " << v2.x() << ' ' << v2.y() << ' ' << v2.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
@@ -595,18 +571,6 @@ public:
 
     virtual void WriteAssimp( const std::string& path) override
     {
-        static const std::array<aiColor4D, 10> COLORS = {
-            aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
-            aiColor4D{255.0f / 255, 190.0f / 255, 122.0f / 255, 1.0},
-            aiColor4D{250.0f / 255, 127.0f / 255, 111.0f / 255, 1.0},
-            aiColor4D{130.0f / 255, 176.0f / 255, 210.0f / 255, 1.0},
-            aiColor4D{190.0f / 255, 184.0f / 255, 220.0f / 255, 1.0},
-            aiColor4D{40.0f / 255, 120.0f / 255, 181.0f / 255, 1.0},
-            aiColor4D{248.0f / 255, 172.0f / 255, 140.0f / 255, 1.0},
-            aiColor4D{255.0f / 255, 136.0f / 255, 132.0f / 255, 1.0},
-            aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
-            aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
-        };
         std::string postfix = path.substr(path.rfind('.') + 1);
         bool has_color = postfix == std::string("obj");
         CGAL::set_halfedgeds_items_id(*this);
@@ -646,7 +610,8 @@ public:
                 static_cast<ai_real>(hv->point().z()));
             if(has_color)
             {
-                m->mColors[0][i] = COLORS[hv->_label % COLORS.size()];
+                auto c = LabelColorMap(hv->_label);
+                m->mColors[0][i] = aiColor4D(c[0], c[1], c[2], 1.0);
             }
         }
 
@@ -659,7 +624,6 @@ public:
             m->mFaces[i].mIndices[1] = static_cast<unsigned int>(hf->halfedge()->next()->vertex()->id());
             m->mFaces[i].mIndices[2] = static_cast<unsigned int>(hf->halfedge()->prev()->vertex()->id());
         }
-
         
         if(postfix == std::string("ply"))
         {
@@ -829,19 +793,6 @@ void WriteVFObj( const std::string& path, std::vector<typename Kernel::Point_3>&
 template <typename Kernel, typename SizeType>
 bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, const std::vector<int>& labels)
 {
-     static const std::array<aiColor4D, 10> COLORS = {
-            aiColor4D{142.0f / 255, 207.0f / 255, 201.0f / 255, 1.0},
-            aiColor4D{255.0f / 255, 190.0f / 255, 122.0f / 255, 1.0},
-            aiColor4D{250.0f / 255, 127.0f / 255, 111.0f / 255, 1.0},
-            aiColor4D{130.0f / 255, 176.0f / 255, 210.0f / 255, 1.0},
-            aiColor4D{190.0f / 255, 184.0f / 255, 220.0f / 255, 1.0},
-            aiColor4D{40.0f / 255, 120.0f / 255, 181.0f / 255, 1.0},
-            aiColor4D{248.0f / 255, 172.0f / 255, 140.0f / 255, 1.0},
-            aiColor4D{255.0f / 255, 136.0f / 255, 132.0f / 255, 1.0},
-            aiColor4D{84.0f / 255, 179.0f / 255, 69.0f / 255, 1.0},
-            aiColor4D{137.0f / 255, 131.0f / 255, 191.0f / 255, 1.0}
-        };
-        
         Assimp::Exporter exporter;
         auto scene = std::make_unique<aiScene>();
 
@@ -872,7 +823,7 @@ bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3
                 static_cast<ai_real>(vertices[i].x()),
                 static_cast<ai_real>(vertices[i].y()),
                 static_cast<ai_real>(vertices[i].z()));
-            m->mColors[0][i] = COLORS[labels[i] % COLORS.size()];
+            m->mColors[0][i] = LabelColorMap(labels[i]);
         }
 
         for(size_t i = 0; i < m->mNumFaces; i++)
