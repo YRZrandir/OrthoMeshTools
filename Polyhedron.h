@@ -793,60 +793,66 @@ void WriteVFObj( const std::string& path, std::vector<typename Kernel::Point_3>&
 template <typename Kernel, typename SizeType>
 bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, const std::vector<int>& labels)
 {
-        Assimp::Exporter exporter;
-        auto scene = std::make_unique<aiScene>();
+    Assimp::Exporter exporter;
+    auto scene = std::make_unique<aiScene>();
+    std::string postfix = path.substr(path.rfind('.') + 1);
+    bool has_color = postfix == std::string("obj");
 
-        scene->mRootNode = new aiNode();
-        scene->mRootNode->mNumMeshes = 1;
-        scene->mRootNode->mMeshes = new uint32_t[1];
-        scene->mRootNode->mMeshes[0] = 0;
+    scene->mRootNode = new aiNode();
+    scene->mRootNode->mNumMeshes = 1;
+    scene->mRootNode->mMeshes = new uint32_t[1];
+    scene->mRootNode->mMeshes[0] = 0;
 
-        scene->mNumMaterials = 1;
-        scene->mMaterials = new aiMaterial*[]{ new aiMaterial() };
-        scene->mMetaData = new aiMetadata();
+    scene->mNumMaterials = 1;
+    scene->mMaterials = new aiMaterial*[]{ new aiMaterial() };
+    scene->mMetaData = new aiMetadata();
 
-        scene->mNumMeshes = 1;
-        scene->mMeshes = new aiMesh*[1];
-        scene->mMeshes[0] = new aiMesh();
+    scene->mNumMeshes = 1;
+    scene->mMeshes = new aiMesh*[1];
+    scene->mMeshes[0] = new aiMesh();
 
-        aiMesh* m = scene->mMeshes[0];
-        m->mNumFaces = static_cast<uint32_t>(faces.size());
-        m->mNumVertices = static_cast<uint32_t>(vertices.size());
-        m->mVertices = new aiVector3D[m->mNumVertices];
+    aiMesh* m = scene->mMeshes[0];
+    m->mNumFaces = static_cast<uint32_t>(faces.size());
+    m->mNumVertices = static_cast<uint32_t>(vertices.size());
+    m->mVertices = new aiVector3D[m->mNumVertices];
+    if(has_color)
+    {
         m->mColors[0] = new aiColor4D[m->mNumVertices];
-        m->mFaces = new aiFace[m->mNumFaces];
-        m->mPrimitiveTypes = aiPrimitiveType_TRIANGLE;
+    }
+    m->mFaces = new aiFace[m->mNumFaces];
+    m->mPrimitiveTypes = aiPrimitiveType_TRIANGLE;
 
-        for(size_t i = 0; i < m->mNumVertices; i++)
+    for(size_t i = 0; i < m->mNumVertices; i++)
+    {
+        m->mVertices[i] = aiVector3D(
+            static_cast<ai_real>(vertices[i].x()),
+            static_cast<ai_real>(vertices[i].y()),
+            static_cast<ai_real>(vertices[i].z()));
+        if(has_color)
         {
-            m->mVertices[i] = aiVector3D(
-                static_cast<ai_real>(vertices[i].x()),
-                static_cast<ai_real>(vertices[i].y()),
-                static_cast<ai_real>(vertices[i].z()));
             m->mColors[0][i] = LabelColorMap(labels[i]);
         }
+    }
 
-        for(size_t i = 0; i < m->mNumFaces; i++)
-        {
-            m->mFaces[i].mNumIndices = 3;
-            m->mFaces[i].mIndices = new unsigned int[m->mFaces[i].mNumIndices];
-            m->mFaces[i].mIndices[0] = static_cast<unsigned int>(faces[i][0]);
-            m->mFaces[i].mIndices[1] = static_cast<unsigned int>(faces[i][1]);
-            m->mFaces[i].mIndices[2] = static_cast<unsigned int>(faces[i][2]);
-        }
-
-        std::string postfix = path.substr(path.rfind('.') + 1);
-        
-        if(postfix == std::string("ply"))
-        {
-            postfix = "plyb";
-        }
-        else if (postfix == std::string("stl"))
-        {
-            postfix = "stlb";
-        }
-        //Assimp::ExportProperties prop;
-        return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
+    for(size_t i = 0; i < m->mNumFaces; i++)
+    {
+        m->mFaces[i].mNumIndices = 3;
+        m->mFaces[i].mIndices = new unsigned int[m->mFaces[i].mNumIndices];
+        m->mFaces[i].mIndices[0] = static_cast<unsigned int>(faces[i][0]);
+        m->mFaces[i].mIndices[1] = static_cast<unsigned int>(faces[i][1]);
+        m->mFaces[i].mIndices[2] = static_cast<unsigned int>(faces[i][2]);
+    }
+    
+    if(postfix == std::string("ply"))
+    {
+        postfix = "plyb";
+    }
+    else if (postfix == std::string("stl"))
+    {
+        postfix = "stlb";
+    }
+    //Assimp::ExportProperties prop;
+    return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
 }
 
 
