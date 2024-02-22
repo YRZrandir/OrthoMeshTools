@@ -785,7 +785,7 @@ void WriteVFObj( const std::string& path, std::vector<typename Kernel::Point_3>&
     }
     for(auto& f : faces)
     {
-        ofs << "f " << f[0] << ' ' << f[1] << ' ' << f[2] << '\n';
+        ofs << "f " << f[0] + 1 << ' ' << f[1] + 1 << ' ' << f[2] + 1 << '\n';
     }
 }
 
