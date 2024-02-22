@@ -355,6 +355,15 @@ void FixMesh(
         }
     }
 
+    // Close holes
+    /*
+    *   TODO:
+    *   By default, The CGAL triangulation method uses a O(nlogn) Delaunay-based algorithm,
+    *   but it fails in some cases and CGAL falls back to a O(n^3) algorithm, which can be very time consuming.
+    *   
+    *   For now the O(n^3) algorithm is disabled, to prevent the program from running forever.  
+    *   A potiential solution is, only use the cubic algorithm for small holes, and add a custom hole filling method for large holes.
+    */
     std::vector<typename Polyhedron::Halfedge_handle> border_edges;
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(m, std::back_inserter(border_edges));
     for(typename Polyhedron::Halfedge_handle hh : border_edges)
