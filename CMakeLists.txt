@@ -74,4 +74,7 @@ if(BUILD_EXECUTABLES)
 
     add_executable(OrthoScanPath "OrthoScanPath/OrthoScanPath.cpp" )
     target_link_libraries(OrthoScanPath PUBLIC Ortho argparse::argparse)
+
+    add_executable(MoveTeeth "MoveTeeth/MoveTeeth.cpp")
+    target_link_libraries(MoveTeeth PUBLIC Ortho argparse::argparse)
 endif()
