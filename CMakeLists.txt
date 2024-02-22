@@ -21,7 +21,7 @@ include(CGAL_Ceres_support)
 
 include_directories("./")
 
-add_library(Ortho "Polyhedron.cpp" "Polyhedron.h" "Ortho.h")
+add_library(Ortho "Polyhedron.cpp" "Ortho.cpp" "Polyhedron.h" "Ortho.h")
 target_link_libraries(Ortho PUBLIC CGAL::CGAL CGAL::Eigen3_support nlohmann_json::nlohmann_json OpenMP::OpenMP_CXX assimp::assimp)
 
 if(BUILD_PYTHON_LIB)
@@ -71,4 +71,7 @@ if(BUILD_EXECUTABLES)
 
     add_executable(FakeToothRoot "FakeToothRoot/FakeToothRoot.cpp" "FakeToothRoot/FakeToothRoot.h" "MeshFix/MeshFix.cpp")
     target_link_libraries(FakeToothRoot PUBLIC Ortho argparse::argparse)
+
+    add_executable(OrthoScanPath "OrthoScanPath/OrthoScanPath.cpp" )
+    target_link_libraries(OrthoScanPath PUBLIC Ortho argparse::argparse)
 endif()

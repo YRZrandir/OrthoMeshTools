@@ -697,7 +697,7 @@ std::vector<std::array<std::pair<int, float>, 3>> ComputeDeformWeights(const Pol
 
         std::sort(weights.begin(), weights.end(), [](auto& lh, auto& rh){ return lh.second < rh.second; });
         std::array<std::pair<int, float>, 3> weight_table_this;
-        weight_table_this.fill({0, 0});
+        weight_table_this.fill({0, 0.f});
         if(weights[0].second < 1e-8f)
         {
             weight_table_this[0] = {weights[0].first, 1.0};
@@ -789,7 +789,7 @@ std::vector<std::array<std::pair<int, float>, 3>> ComputeDeformWeightsGeoDist(co
             {
                 if(dist_to_label.count(label) == 0 || dist_to_label.at(label).count(hv) == 0)
                     continue;
-                label_dist_pairs.push_back({label, dist_to_label.at(label).at(hv)});
+                label_dist_pairs.push_back({label, static_cast<float>(dist_to_label.at(label).at(hv))});
             }
             std::sort(label_dist_pairs.begin(), label_dist_pairs.end(), [](auto& lh, auto& rh){ return lh.second < rh.second; });
             label_dist_pairs.resize(v_weights.size());

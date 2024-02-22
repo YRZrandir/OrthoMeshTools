@@ -199,6 +199,41 @@ protected:
     std::unordered_map<int, std::pair<Eigen::Transform<Scalar, 3, Eigen::Affine>, Eigen::Transform<Scalar, 3, Eigen::Affine>>> _mats;
 };
 
+template <typename Kernel>
+std::vector<CrownFrames<Kernel>> LoadPaths( const std::string& path )
+{
+    nlohmann::json json = nlohmann::json::parse(std::ifstream(path));
+    std::vector<CrownFrames<Kernel>> paths;
+    int step = 0;
+    while(json.find(std::to_string(step)) != json.end())
+    {
+        CrownFrames<Kernel> frames;
+        auto step_data = json[std::to_string(step)];
+        for(int label = 11; label < 50; label++)
+        {
+            if(step_data.find(std::to_string(label)) != step_data.end())
+            {
+                std::vector<double> mat = step_data[std::to_string(label)].get<std::vector<double>>();
+                Frame<Kernel> frame( typename Kernel::Aff_transformation_3(
+                    mat[0], mat[1], mat[2], mat[3],
+                    mat[4], mat[5], mat[6], mat[7],
+                    mat[8], mat[9], mat[10], mat[11],
+                    1.0
+                ));
+                frames.Insert(label, frame);
+            }
+        }
+        paths.push_back(frames);
+        step++;
+    }
+    
+    return paths;
+}
+
+std::vector<std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>>> LoadPathsEigen( const std::string& path );
+std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> LoadCrownFrameEigen( const std::string& path );
+std::unordered_map<int, Eigen::Transform<double, 3, Eigen::Affine>> LoadCBCTTeethFrames( const std::string& path );
+
 constexpr std::array<float, 3> LabelColorMap(int label)
 {
     constexpr std::array<std::array<float, 3>, 10> COLORS = {

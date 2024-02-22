@@ -830,7 +830,8 @@ bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3
             static_cast<ai_real>(vertices[i].z()));
         if(has_color)
         {
-            m->mColors[0][i] = LabelColorMap(labels[i]);
+            auto c = LabelColorMap(labels[i]);
+            m->mColors[0][i] = aiColor4D(c[0], c[1], c[2], 1.0);
         }
     }
 
