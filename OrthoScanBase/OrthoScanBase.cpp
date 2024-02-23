@@ -988,8 +988,8 @@ int main(int argc, char *argv[])
     argparse::ArgumentParser parser;
     parser.add_argument("--input_file", "-i").required().help("specify the input mesh.");
     parser.add_argument("--input_label", "-l").required().help("specify the input labels.");
-    parser.add_argument("--output_file", "-o").required().help("specify the output file.");
-    parser.add_argument("--output_label", "-ol").required().help("specify the output labels.");
+    parser.add_argument("--output_file", "-o").help("specify the output file.");
+    parser.add_argument("--output_label", "-ol").help("specify the output labels.");
     parser.add_argument("--output_gum", "-g").help("specify the output gum mesh file.");
     parser.add_argument("--crown_frame", "-c").help("specify the crown frame file.");
     try
@@ -1063,8 +1063,12 @@ int main(int argc, char *argv[])
         std::cout << "Generating...";
         GenerateBase2(mesh);
         std::cout << "Done." << std::endl;
-        mesh.WriteOBJ(parser.get("-o"));
-        mesh.WriteLabels(parser.get("-ol"));
+        if(parser.present("-o").has_value()) {
+            mesh.WriteOBJ(parser.get("-o"));
+        }
+        if(parser.present("-ol").has_value()) {
+            mesh.WriteLabels(parser.get("-ol"));
+        }
 
         if(parser.present("-g").has_value() && parser.present("-c").has_value())
         {
