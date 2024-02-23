@@ -18,6 +18,7 @@ int main(int argc, char* argv[])
     argparse.add_argument("--smallhole_size", "-ss").help("holes whose edge bounding box smaller than the value are closed.").nargs(1).scan<'f', float>().default_value(0.0f);
     argparse.add_argument("--refine", "-r").help("refine the filled holes.").flag();
     argparse.add_argument("--max_retry", "-m").help("max retry number to fix the mesh.").scan<'i', int>().default_value(10);
+    argparse.add_argument("--color", "-c").help("keep the colors").flag();
     try
     {
         argparse.parse_args(argc, argv);
@@ -41,6 +42,7 @@ int main(int argc, char* argv[])
         bool filter_small_holes = smallhole_edge_num <= 2 && smallhole_size <= 0.0;
         bool refine = argparse.get<bool>("--refine");
         int max_retry = argparse.get<int>("--max_retry");
+        bool color = argparse.get<bool>("--color");
         if(!input_label.empty() && !output_label.empty())
         {
             FixMeshFileWithLabel(
@@ -60,18 +62,36 @@ int main(int argc, char* argv[])
         }
         else
         {
-            FixMeshFile( 
-                path,
-                output_path,
-                keep_largest_connected_component,
-                large_cc_threshold,
-                fix_self_intersection, 
-                filter_small_holes, 
-                smallhole_edge_num, 
-                smallhole_size, 
-                refine,
-                max_retry
-            );
+            if(color)
+            {
+                FixMeshFileWithColor( 
+                    path,
+                    output_path,
+                    keep_largest_connected_component,
+                    large_cc_threshold,
+                    fix_self_intersection, 
+                    filter_small_holes, 
+                    smallhole_edge_num, 
+                    smallhole_size, 
+                    refine,
+                    max_retry
+                );
+            }
+            else
+            {
+                FixMeshFile( 
+                    path,
+                    output_path,
+                    keep_largest_connected_component,
+                    large_cc_threshold,
+                    fix_self_intersection, 
+                    filter_small_holes, 
+                    smallhole_edge_num, 
+                    smallhole_size, 
+                    refine,
+                    max_retry
+                );
+            }
         }
     }
     catch( const std::exception& e)

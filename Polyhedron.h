@@ -740,6 +740,55 @@ void LoadVFAssimp( const std::string& path, std::vector<typename Kernel::Point_3
 }
 
 template <typename Kernel, typename SizeType>
+void LoadVCFAssimp(const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<Eigen::Vector3f>& colors, std::vector<TTriangle<SizeType>>& faces)
+{
+    Assimp::Importer importer;
+    importer.SetPropertyInteger(AI_CONFIG_PP_RVC_FLAGS,
+     aiComponent_ANIMATIONS | aiComponent_NORMALS | aiComponent_TEXCOORDS | aiComponent_TANGENTS_AND_BITANGENTS );
+    const aiScene* scene = importer.ReadFile(path, aiProcess_JoinIdenticalVertices | aiProcess_RemoveComponent);
+    if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode || scene->mNumMeshes < 1)
+    {
+        throw IOError("LoadVFAssimp: cannot read mesh: " + path);
+    }
+    const aiMesh* mesh = scene->mMeshes[0];
+
+    auto to_cgal = [](const aiVector3D& v) { return typename Kernel::Point_3{v.x, v.y, v.z};};
+
+    vertices.clear();
+    vertices.reserve(mesh->mNumVertices);
+    for(uint32_t i = 0; i < mesh->mNumVertices; i++)
+    {
+        vertices.push_back(to_cgal(mesh->mVertices[i]));
+    }
+
+    colors.resize(mesh->mNumVertices, Eigen::Vector3f(1.f, 1.f, 1.f));
+    if(mesh->HasVertexColors(0))
+    {
+        for(uint32_t i = 0; i < mesh->mNumVertices; i++)
+        {
+            auto c = mesh->mColors[0][i];
+            colors[i] = Eigen::Vector3f(c.r, c.g, c.b);
+        }
+    }
+    else
+    {
+        std::cout << "Warning: the mesh doesn't have color." << std::endl;
+    }
+
+    faces.clear();
+    faces.reserve(mesh->mNumVertices);
+    for(uint32_t i = 0; i < mesh->mNumFaces; i++)
+    {
+        const auto& f = mesh->mFaces[i];
+        if(f.mIndices[0] >= mesh->mNumVertices || f.mIndices[1] >= mesh->mNumVertices || f.mIndices[2] >= mesh->mNumVertices)
+        {
+            throw IOError("LoadVFAssimp: found bad index.");
+        }
+        faces.emplace_back(f.mIndices[0], f.mIndices[1], f.mIndices[2]);
+    }
+}
+
+template <typename Kernel, typename SizeType>
 void LoadVFObj( const std::string& path, std::vector<typename Kernel::Point_3>& vertices, std::vector<TTriangle<SizeType>>& faces )
 {
     std::ifstream ifs(path);
@@ -789,9 +838,8 @@ void WriteVFObj( const std::string& path, std::vector<typename Kernel::Point_3>&
     }
 }
 
-
 template <typename Kernel, typename SizeType>
-bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, const std::vector<int>& labels)
+bool WriteVCFAssimp(std::string path, const std::vector<typename Kernel::Point_3>& vertices, const std::vector<Eigen::Vector3f>& colors, const std::vector<TTriangle<SizeType>>& faces)
 {
     Assimp::Exporter exporter;
     auto scene = std::make_unique<aiScene>();
@@ -830,7 +878,7 @@ bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3
             static_cast<ai_real>(vertices[i].z()));
         if(has_color)
         {
-            auto c = LabelColorMap(labels[i]);
+            auto c = colors[i];
             m->mColors[0][i] = aiColor4D(c[0], c[1], c[2], 1.0);
         }
     }
@@ -856,6 +904,17 @@ bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3
     return exporter.Export(scene.get(), postfix, path) == aiReturn_SUCCESS;
 }
 
+template <typename Kernel, typename SizeType>
+bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, const std::vector<int>& labels)
+{
+    std::vector<Eigen::Vector3f> colors;
+    for(int label : labels)
+    {
+        auto c = LabelColorMap(label);
+        colors.push_back(Eigen::Vector3f(c[0], c[1], c[2]));
+    }
+    return WriteVCFAssimp(path, vertices, colors, faces);
+}
 
 template <typename Facet_handle>
 Facet_handle::value_type::Vertex::Point_3::R::Vector_3 FaceNormal(Facet_handle hf)
