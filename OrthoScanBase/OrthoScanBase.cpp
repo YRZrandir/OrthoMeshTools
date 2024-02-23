@@ -867,7 +867,6 @@ void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Po
                 hv->_label = 2;
         }
     }
-
     std::vector<typename Polyhedron::Vertex_handle> vertex_to_fair;
     for(auto hv : CGAL::vertices(mesh))
         if(hv->_label == 2)
@@ -1033,6 +1032,8 @@ int main(int argc, char *argv[])
     else
     {
         mesh.LoadLabels(label_file);
+        auto [v, f] = mesh.ToVerticesTriangles();
+        FixMeshWithLabel(v, f, mesh.WriteLabels(), mesh, true, 1000, false, false, 0, 0, false, 10);
         //mesh.UpdateFaceLabels2();
     }
     LabelProcessing(mesh);
@@ -1053,6 +1054,8 @@ int main(int argc, char *argv[])
     {
         std::cout << "Optimizing...";
         Optimize(mesh);
+        auto [v, f] = mesh.ToVerticesTriangles();
+        FixMeshWithLabel(v, f, mesh.WriteLabels(), mesh, true, 1000, false, false, 0, 0, false, 10);
         std::cout << "Done." << std::endl;
 #ifdef DEBUG_ORTHOSCANBASE
         mesh.WriteOBJ("optimized.obj");
