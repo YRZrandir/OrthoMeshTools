@@ -1,6 +1,6 @@
-﻿cmake_minimum_required (VERSION 3.8)
+﻿cmake_minimum_required(VERSION 3.8)
 set(CMAKE_CXX_STANDARD 20)
-project ("OrthoMeshTools" C CXX)
+project("OrthoMeshTools" C CXX)
 
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -24,21 +24,23 @@ include_directories("./")
 add_library(Ortho "Polyhedron.cpp" "Ortho.cpp" "Polyhedron.h" "Ortho.h")
 target_link_libraries(Ortho PUBLIC CGAL::CGAL CGAL::Eigen3_support nlohmann_json::nlohmann_json OpenMP::OpenMP_CXX assimp::assimp)
 
-if(BUILD_PYTHON_LIB)
+if (BUILD_PYTHON_LIB)
     # find pybind11 dependency when needed
     find_package(pybind11 CONFIG)
-    if(pybind11_FOUND)
+    if (pybind11_FOUND)
         add_compile_definitions(FOUND_PYBIND11)
         pybind11_add_module(OrthoMeshTools SHARED "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
-        "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp"  "OrthoScanBase/OrthoScanBase.cpp")
+                "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp"
+                "FakeToothRoot/FakeToothRoot.cpp" "OrthoScanBase/OrthoScanBase.cpp"
+        )
         target_link_libraries(OrthoMeshTools PUBLIC Ortho pybind11::module)
         target_compile_definitions(OrthoMeshTools PUBLIC FOUND_PYBIND11)
-    else()
+    else ()
         message(WARNING "Failed to find pybind11.")
-    endif()
-endif()
+    endif ()
+endif ()
 
-if(BUILD_EXECUTABLES)
+if (BUILD_EXECUTABLES)
     find_package(argparse REQUIRED)
 
     add_executable(MeshFix "MeshFix/MeshFix.cpp" "MeshFix/MeshFix.h" "MeshFix/MeshFixApp.cpp")
@@ -54,7 +56,7 @@ if(BUILD_EXECUTABLES)
     add_executable(HoleMerge "HoleMerge/HoleMerge.cpp" "HoleMerge/HoleMerge.h")
     target_link_libraries(HoleMerge PUBLIC Ortho argparse::argparse)
 
-    add_executable(GumTrimLine "GumTrimLine/GumTrimLine.cpp"  "GumTrimLine/GumTrimLineApp.cpp" "GumTrimLine/GumTrimLine.h" "MeshFix/MeshFix.cpp")
+    add_executable(GumTrimLine "GumTrimLine/GumTrimLine.cpp" "GumTrimLine/GumTrimLineApp.cpp" "GumTrimLine/GumTrimLine.h" "MeshFix/MeshFix.cpp")
     target_link_libraries(GumTrimLine PUBLIC Ortho argparse::argparse)
 
     add_executable(ColorMeshByLabel "ColorMeshByLabel/ColorMeshByLabel.cpp" "ColorMeshByLabel/ColorMeshByLabel.h")
@@ -62,9 +64,9 @@ if(BUILD_EXECUTABLES)
 
     add_executable(OrthoScanDeform "OrthoScanDeform/OrthoScanDeformApp.cpp" "OrthoScanDeform/OrthoScanDeform.h" "MeshFix/MeshFix.cpp")
     target_link_libraries(OrthoScanDeform PUBLIC Ortho argparse::argparse)
-    if(TARGET CGAL::Ceres_support)
+    if (TARGET CGAL::Ceres_support)
         target_link_libraries(OrthoScanDeform PUBLIC CGAL::Ceres_support)
-    endif()
+    endif ()
 
     add_executable(OrthoScanBase "OrthoScanBase/OrthoScanBase.cpp" "MeshFix/MeshFix.cpp")
     target_link_libraries(OrthoScanBase PUBLIC Ortho argparse::argparse)
@@ -72,9 +74,9 @@ if(BUILD_EXECUTABLES)
     add_executable(FakeToothRoot "FakeToothRoot/FakeToothRoot.cpp" "FakeToothRoot/FakeToothRoot.h" "MeshFix/MeshFix.cpp")
     target_link_libraries(FakeToothRoot PUBLIC Ortho argparse::argparse)
 
-    add_executable(OrthoScanPath "OrthoScanPath/OrthoScanPath.cpp" "OrthoScanPath/OrthoScanPathApp.cpp" )
+    add_executable(OrthoScanPath "OrthoScanPath/OrthoScanPath.cpp" "OrthoScanPath/OrthoScanPathApp.cpp")
     target_link_libraries(OrthoScanPath PUBLIC Ortho argparse::argparse)
 
     add_executable(MoveTeeth "MoveTeeth/MoveTeeth.cpp" "OrthoScanPath/OrthoScanPath.cpp")
     target_link_libraries(MoveTeeth PUBLIC Ortho argparse::argparse)
-endif()
+endif ()
