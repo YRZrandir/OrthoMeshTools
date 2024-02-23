@@ -913,7 +913,7 @@ bool WriteVFAssimp( std::string path, const std::vector<typename Kernel::Point_3
         auto c = LabelColorMap(label);
         colors.push_back(Eigen::Vector3f(c[0], c[1], c[2]));
     }
-    return WriteVCFAssimp(path, vertices, colors, faces);
+    return WriteVCFAssimp<Kernrl, SizeType>(path, vertices, colors, faces);
 }
 
 template <typename Facet_handle>
