@@ -126,6 +126,23 @@ public:
         return _frames;
     }
 
+    void WriteFile(const std::string& path, bool upper) const
+    {
+        std::ofstream ofs(path);
+        int id = 1;
+        for(auto& [label, frame] : _frames)
+        {
+            if(upper && label < 30 || !upper && label > 30)
+            {
+                auto p1 = frame.pos;
+                auto p2 = frame.pos + frame.up * 8.0f;
+                ofs << "v " << p1.x() << ' ' << p1.y() << ' ' << p1.z() << " 1 0 0\n";
+                ofs << "v " << p2.x() << ' ' << p2.y() << ' ' << p2.z() << " 1 0 0\n";
+                ofs << "l " << id << ' ' << id + 1 << '\n';
+                id += 2;
+            }
+        }
+    }
 protected:
     std::unordered_map<int, Frame<Kernel>> _frames;
 };
