@@ -493,7 +493,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
         }
         part_mesh.UpdateFaceLabels2();
         printf("SubMesh valid. F = %zd\n", part_mesh.size_of_facets());
-        // part_mesh.WriteOBJ("part_mesh" + std::to_string(part_mesh.size_of_vertices()) + ".obj");
+        part_mesh.WriteOBJ("part_mesh" + std::to_string(part_mesh.size_of_vertices()) + ".obj");
         /* Extract borders */
         std::vector<hHalfedge> border_halfedges;
         CGAL::Polygon_mesh_processing::extract_boundary_cycles(part_mesh, std::back_inserter(border_halfedges));
@@ -537,7 +537,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
             {
                 curve.LoadCrownFrame(*crown_frames);
             }
-            //curve.WriteOBJ("curve" + std::to_string(curve.size()) + ".obj");
+            curve.WriteOBJ("curve" + std::to_string(curve.size()) + ".obj");
             trim_points.push_back(curve);
             printf("Added curve of %zd points.\n", curve.size());
         }
