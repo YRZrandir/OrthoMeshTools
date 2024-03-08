@@ -24,6 +24,8 @@
 #include <argparse/argparse.hpp>
 #endif
 
+//#define DEBUG_ORTHOSCANBASE
+
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
 using Polyhedron = TPolyhedronWithLabel<ItemsWithLabelFlag, KernelEpick>;
 
@@ -258,6 +260,40 @@ void GenerateBase2(Polyhedron &mesh)
         }
     }
 
+#ifdef DEBUG_ORTHOSCANBASE
+    {
+        std::vector<Polyhedron::Point_3> points;
+        std::vector<Eigen::Vector3f> colors;
+        std::vector<TTriangle<size_t>> faces;
+        int nv = 0;
+        int nt = 0;
+        for(auto hf : CGAL::faces(mesh))
+        {
+            auto p0 = hf->halfedge()->vertex()->point();
+            auto p1 = hf->halfedge()->next()->vertex()->point();
+            auto p2 = hf->halfedge()->prev()->vertex()->point();
+            points.push_back(p0);
+            points.push_back(p1);
+            points.push_back(p2);
+            faces.emplace_back(nv, nv + 1, nv + 2);
+            nv += 3;
+            if(face_to_remove.count(hf) != 0)
+            {
+                colors.push_back(Eigen::Vector3f(1, 0, 0));
+                colors.push_back(Eigen::Vector3f(1, 0, 0));
+                colors.push_back(Eigen::Vector3f(1, 0, 0));
+            }
+            else
+            {
+                colors.push_back(Eigen::Vector3f(0.7f, 0.7f, 0.7f));
+                colors.push_back(Eigen::Vector3f(0.7f, 0.7f, 0.7f));
+                colors.push_back(Eigen::Vector3f(0.7f, 0.7f, 0.7f));
+            }
+        }
+        WriteVCFAssimp<Polyhedron::Traits::Kernel, size_t>("removed1.obj", points, colors, faces);
+    }
+#endif
+
     // After removing, we want the remaining part to be one single connected component. So we try to merge them here.
     std::cout << "Computing connected components..." << std::endl;
     std::unordered_set<typename Polyhedron::Facet_handle> remain_faces;
@@ -312,7 +348,43 @@ void GenerateBase2(Polyhedron &mesh)
         }
         conn_comp_remain_faces.push_back(std::move(component));
     }
-
+    std::sort(conn_comp_remain_faces.begin(), conn_comp_remain_faces.end(), [&mesh](auto comp0, auto comp1){
+        int maxl0 = 0;
+        int minl0 = 100;
+        int maxl1 = 0;
+        int minl1 = 100;
+        for(auto hf : comp0)
+        {
+            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh))
+            {
+                if(hv->_label > 10 && hv->_label < 50)
+                {
+                    maxl0 = std::max(maxl0, hv->_label);
+                    minl0 = std::min(minl0, hv->_label);
+                }
+            }
+        }
+        for(auto hf : comp1)
+        {
+            for(auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh))
+            {
+                if(hv->_label > 10 && hv->_label < 50)
+                {
+                    maxl1 = std::max(maxl1, hv->_label);
+                    minl1 = std::min(minl1, hv->_label);
+                }
+            }
+        }
+        if(maxl0 / 10 == 1 || maxl0 / 10 == 3)
+            maxl0 = 37 - maxl0;
+        if(minl0 / 10 == 1 || minl0 / 10 == 3)
+            minl0 = 37 - minl0;
+        if(maxl1 / 10 == 1 || maxl1 / 10 == 3)
+            maxl1 = 37 - maxl1;
+        if(minl1 / 10 == 1 || minl1 / 10 == 3)
+            minl1 = 37 - minl1;
+        return minl0 < minl1;
+    });
     std::cout << "Found " << conn_comp_remain_faces.size() << " remaining parts." << std::endl;
     typedef CGAL::Search_traits_3<typename Polyhedron::Traits::Kernel>      Traits_base;
     typedef boost::property_map<Polyhedron,CGAL::vertex_point_t>::type            Vertex_point_pmap;
@@ -333,10 +405,13 @@ void GenerateBase2(Polyhedron &mesh)
     {
         // Luckily we don't need an accurate sequence, so we just record all 'related' vertices.
         std::unordered_set<typename Polyhedron::Facet_handle> faces;
+        std::unordered_set<typename Polyhedron::Vertex_handle> vertices;
         Polyhedron& m;
         Sequence_collector(Polyhedron& _m) : m(_m) {}
         void operator()(typename Polyhedron::Halfedge_handle he, double alpha)
         {
+            vertices.insert(he->vertex());
+            vertices.insert(he->prev()->vertex());
             for(auto nei : CGAL::faces_around_target(he, m))
             {
                 if(nei != nullptr)
@@ -355,11 +430,17 @@ void GenerateBase2(Polyhedron &mesh)
                 if(nei != nullptr)
                     faces.insert(nei);
             }
+            vertices.insert(v);
         }
         void operator()(typename Polyhedron::Facet_handle f, ShortestPathTraits::Barycentric_coordinates alpha)
         {
             if(f != nullptr)
+            {
                 faces.insert(f);
+                vertices.insert(f->halfedge()->vertex());
+                vertices.insert(f->halfedge()->next()->vertex());
+                vertices.insert(f->halfedge()->prev()->vertex());
+            }   
         }
     };
     
@@ -410,6 +491,7 @@ void GenerateBase2(Polyhedron &mesh)
                                             get(CGAL::face_external_index, mesh),
                                             get(CGAL::vertex_point, mesh));
         std::cout << "query..";
+        // TODO: this accurate sequence is very slow. maybe we can 1. use a sub mesh 2. try other methods e.g. Dijkstra?
         shortest_paths.add_source_point(nearest_pair.first);
         Sequence_collector sequence(mesh);
         auto [dist, it] = shortest_paths.shortest_path_sequence_to_source_points(nearest_pair.second, sequence);
@@ -417,10 +499,46 @@ void GenerateBase2(Polyhedron &mesh)
 
         if(dist < 0)
         {
-            std::cout << "Not reachable" << std::endl;
+            std::cout << "ERROR: components are not reachable" << std::endl;
         }
         // make the connecting part wider
+        std::unordered_set<typename Polyhedron::Vertex_handle> connector_vertices;
+        std::queue<typename Polyhedron::Vertex_handle> queue;
+        for(auto hv : sequence.vertices)
+        {
+            queue.push(hv);
+        }
+        while(!queue.empty())
+        {
+            auto hv = queue.front();
+            queue.pop();
+            connector_vertices.insert(hv);
+            for(auto nei : CGAL::vertices_around_target(hv, mesh))
+            {
+                if(connector_vertices.count(nei) != 0 || nei->_label > 10)
+                {
+                    continue;
+                }
+                double min_dist = std::numeric_limits<double>::max();
+                for(auto vv : sequence.vertices)
+                {
+                    min_dist = std::min(min_dist, CGAL::squared_distance(vv->point(), nei->point()));
+                }
+                if(min_dist < 4.0)
+                {
+                    queue.push(nei);
+                }
+            }
+        }
+
         std::unordered_set<typename Polyhedron::Facet_handle> connector_faces;
+        for(auto hv : connector_vertices)
+        {
+            for(auto hf : CGAL::faces_around_target(hv->halfedge(), mesh))
+            {
+                connector_faces.insert(hf);
+            }
+        }
         for(auto hf : sequence.faces)
         {
             connector_faces.insert(hf);
@@ -436,6 +554,40 @@ void GenerateBase2(Polyhedron &mesh)
     }
     // conn_comp_remain_faces[0] should contains all faces now
     std::erase_if(face_to_remove, [&conn_comp_remain_faces](auto hf) { return conn_comp_remain_faces[0].count(hf) != 0; });
+
+#ifdef DEBUG_ORTHOSCANBASE
+    {
+        std::vector<Polyhedron::Point_3> points;
+        std::vector<Eigen::Vector3f> colors;
+        std::vector<TTriangle<size_t>> faces;
+        int nv = 0;
+        int nt = 0;
+        for(auto hf : CGAL::faces(mesh))
+        {
+            auto p0 = hf->halfedge()->vertex()->point();
+            auto p1 = hf->halfedge()->next()->vertex()->point();
+            auto p2 = hf->halfedge()->prev()->vertex()->point();
+            points.push_back(p0);
+            points.push_back(p1);
+            points.push_back(p2);
+            faces.emplace_back(nv, nv + 1, nv + 2);
+            nv += 3;
+            if(face_to_remove.count(hf) != 0)
+            {
+                colors.push_back(Eigen::Vector3f(1, 0, 0));
+                colors.push_back(Eigen::Vector3f(1, 0, 0));
+                colors.push_back(Eigen::Vector3f(1, 0, 0));
+            }
+            else
+            {
+                colors.push_back(Eigen::Vector3f(0.7f, 0.7f, 0.7f));
+                colors.push_back(Eigen::Vector3f(0.7f, 0.7f, 0.7f));
+                colors.push_back(Eigen::Vector3f(0.7f, 0.7f, 0.7f));
+            }
+        }
+        WriteVCFAssimp<Polyhedron::Traits::Kernel, size_t>("removed2.obj", points, colors, faces);
+    }
+#endif
 
     for (auto hf : face_to_remove)
     {
@@ -700,7 +852,7 @@ std::vector<std::array<std::pair<int, float>, 3>> ComputeDeformWeights(const Pol
         weight_table_this.fill({0, 0.f});
         if(weights[0].second < 1e-8f)
         {
-            weight_table_this[0] = {weights[0].first, 1.0};
+            weight_table_this[0] = {weights[0].first, 1.0f};
         }
         else
         {
