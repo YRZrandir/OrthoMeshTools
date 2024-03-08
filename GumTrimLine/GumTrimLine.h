@@ -211,18 +211,22 @@ namespace internal
                 }
                 ofs << "v " << _points[i].x() << ' ' << _points[i].y() << ' ' << _points[i].z() << ' ' << c[0] << ' ' << c[1] << ' ' << c[2] << "\n";
             }
-            for(auto& [label, c] : _centroids)
+            for(size_t i = 1; i < _points.size(); i++)
             {
-                ofs << "v " << c.x() << ' ' << c.y() << ' ' << c.z() << " 1 0 0\n";
+                ofs << "l " << i << " " << (i + 1) % (_points.size() + 1) << '\n';
             }
-            for(auto& [label, up] : _upwards)
-            {
-                for(int i = 0; i < 100; i++)
-                {
-                    Point_3 p = _centroids.at(label) + up * 0.1f * (i + 1);
-                    ofs << "v " << p.x() << ' ' << p.y() << ' ' << p.z() << " 0 0 1\n";
-                }
-            }
+            // for(auto& [label, c] : _centroids)
+            // {
+            //     ofs << "v " << c.x() << ' ' << c.y() << ' ' << c.z() << " 1 0 0\n";
+            // }
+            // for(auto& [label, up] : _upwards)
+            // {
+            //     for(int i = 0; i < 100; i++)
+            //     {
+            //         Point_3 p = _centroids.at(label) + up * 0.1f * (i + 1);
+            //         ofs << "v " << p.x() << ' ' << p.y() << ' ' << p.z() << " 0 0 1\n";
+            //     }
+            // }
             ofs << std::endl;
         }
         void ForEachSegment(const std::function<void(const Point_3& p0, const Point_3& p1, int l0, int l1, size_t idx)>& func) const

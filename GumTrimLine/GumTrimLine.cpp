@@ -323,8 +323,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
     
     LabelProcessing(mesh);
     mesh.UpdateFaceLabels2();
-    // mesh.WriteTriSoup("processed_mesh" + std::to_string(mesh.size_of_facets()) + ".obj");
-
+    mesh.WriteOBJ("processed_mesh" + std::to_string(mesh.size_of_facets()) + ".obj");
     using SubMesh = std::vector<hFacet>;
     std::vector<SubMesh> components;
     for (auto hf : CGAL::faces(mesh))
@@ -516,7 +515,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
             {
                 curve.AddPoint(hh->vertex()->point(), hh->opposite()->facet()->_label);
             }
-
+            curve.WriteOBJ("curve_nosmooth" + std::to_string(curve.size()) + ".obj");
             for (size_t iteration = 0; iteration < smooth; iteration++)
             {
                 std::vector<Point_3> new_points = curve.GetPoints();
@@ -599,6 +598,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
     {
         final_curve.FixAllCurve(aabb_tree, fix_factor);
     }
+    final_curve.WriteOBJ("before_smooth.obj");
     for (size_t iteration = 0; iteration < 1; iteration++)
     {
         std::vector<Point_3> new_points = final_curve.GetPoints();

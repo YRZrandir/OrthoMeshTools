@@ -557,10 +557,10 @@ public:
             auto v0 = hf->halfedge()->vertex()->point();
             auto v1 = hf->halfedge()->next()->vertex()->point();
             auto v2 = hf->halfedge()->prev()->vertex()->point();
-            auto c = LabeLColorMap(hf->_label);
-            ss << "v " << v0.x() << ' ' << v0.y() << ' ' << v0.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
-            ss << "v " << v1.x() << ' ' << v1.y() << ' ' << v1.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
-            ss << "v " << v2.x() << ' ' << v2.y() << ' ' << v2.z() << ' ' << c.r << ' ' << c.g << ' ' << c.b << '\n';
+            auto c = LabelColorMap(hf->_label);
+            ss << "v " << v0.x() << ' ' << v0.y() << ' ' << v0.z() << ' ' << c[0] << ' ' << c[1] << ' ' << c[2] << '\n';
+            ss << "v " << v1.x() << ' ' << v1.y() << ' ' << v1.z() << ' ' << c[0] << ' ' << c[1] << ' ' << c[2] << '\n';
+            ss << "v " << v2.x() << ' ' << v2.y() << ' ' << v2.z() << ' ' << c[0] << ' ' << c[1] << ' ' << c[2] << '\n';
             ss << "f " << vcount + 1 << ' ' << vcount + 2 << ' ' << vcount + 3 << '\n';
             vcount += 3;
         }
