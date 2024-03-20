@@ -314,7 +314,7 @@ bool FixMeshFileWithLabel(
 
 template <typename Polyhedron>
 void FixMesh(
-    const std::vector<typename Polyhedron::K::Point_3>& input_vertices,
+    const std::vector<typename Polyhedron::Traits::Point_3>& input_vertices,
     const std::vector<TTriangle<typename Polyhedron::Vertex::size_type>>& input_faces,
     Polyhedron& output_mesh,
     bool keep_largest_connected_component,
@@ -329,7 +329,7 @@ void FixMesh(
     std::vector<std::pair<std::vector<typename Polyhedron::Vertex_handle>, std::vector<typename Polyhedron::Facet_handle>>>* patch = nullptr
 )
 {
-    using Kernel = typename Polyhedron::K;
+    using Kernel = typename Polyhedron::Traits;
     using Triangle = TTriangle<typename Polyhedron::Vertex::size_type>;
     auto faces = internal::FixRoundingOrder<Kernel, typename Triangle::size_type>(input_vertices, input_faces);
     std::cout << "After fix rounding F = " << faces.size() << std::endl;
