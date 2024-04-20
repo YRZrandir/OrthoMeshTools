@@ -323,7 +323,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
     
     LabelProcessing(mesh);
     mesh.UpdateFaceLabels2();
-    mesh.WriteOBJ("processed_mesh" + std::to_string(mesh.size_of_facets()) + ".obj");
+    
     using SubMesh = std::vector<hFacet>;
     std::vector<SubMesh> components;
     for (auto hf : CGAL::faces(mesh))
@@ -426,6 +426,8 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
         }
         hv->_label = label;
     }
+
+    mesh.WriteOBJ("processed_mesh" + std::to_string(mesh.size_of_facets()) + ".obj");
 
     // Recompute label components
     for(auto hf : CGAL::faces(mesh))

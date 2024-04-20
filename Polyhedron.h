@@ -123,7 +123,7 @@ struct TPairPred
     }
 };
 template <typename HDS, typename Kernel>
-class TPolyhedronObjBulider;
+class TPolyhedronObjBuilder;
 
 template <typename Item, typename Kernel>
 #if BOOST_CXX_VERSION >= 202002L
@@ -134,7 +134,7 @@ class TPolyhedron : public CGAL::Polyhedron_3<Kernel, Item>
 public:
     static_assert(std::is_base_of_v<CGAL::Polyhedron_items_with_id_3, Item>, "Item has to derive from Polyhedron_items_with_id_3!");
     using Base = CGAL::Polyhedron_3<Kernel, Item>;
-    using PolyhedronObjBuilder = TPolyhedronObjBulider<typename Base::HalfedgeDS, Kernel>;
+    using PolyhedronObjBuilder = TPolyhedronObjBuilder<typename Base::HalfedgeDS, Kernel>;
     using Triangle = TTriangle<typename Base::Vertex::size_type>;
     using Edge = TEdge<typename Base::Vertex::size_type>;
     using PairHashUnordered = TPairHashUnordered<typename Base::Vertex::size_type>;
@@ -652,10 +652,10 @@ public:
 #undef CGAL_GRAPH_TRAITS_INHERITANCE_BASE_CLASS_NAME
 
 template <typename HDS, typename Kernel>
-class TPolyhedronObjBulider : public CGAL::Modifier_base<HDS>
+class TPolyhedronObjBuilder : public CGAL::Modifier_base<HDS>
 {
 public:
-    TPolyhedronObjBulider(const std::vector<typename Kernel::Point_3> &vertices, const std::vector<size_t> &indices)
+    TPolyhedronObjBuilder(const std::vector<typename Kernel::Point_3> &vertices, const std::vector<size_t> &indices)
         : _vertices(vertices), _indices(indices) {}
     virtual void operator()(HDS &hds) override
     {
