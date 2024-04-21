@@ -79,4 +79,7 @@ if (BUILD_EXECUTABLES)
 
     add_executable(MoveTeeth "MoveTeeth/MoveTeeth.cpp" "OrthoScanPath/OrthoScanPath.cpp")
     target_link_libraries(MoveTeeth PUBLIC Ortho argparse::argparse)
+
+    add_executable(GumLineCompare "GumLineCompare/GumLineCompare.cpp")
+    target_link_libraries(GumLineCompare PUBLIC Ortho argparse::argparse)
 endif ()
