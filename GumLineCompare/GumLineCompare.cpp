@@ -54,6 +54,11 @@ double CalcDist(const std::vector<Kernel::Point_3>& source, const std::vector<Ke
     {
         source_segs.emplace_back(source[i], source[(i + 1) % source.size()]);
     }
+    double source_total_len = 0.0;
+    for(auto seg : source_segs)
+    {
+        source_total_len += std::sqrt(seg.squared_length());
+    }
 
     using AABBPrimitive = CGAL::AABB_segment_primitive<Kernel, std::vector<Kernel::Segment_3>::iterator>;
     using AABBTraits = CGAL::AABB_traits<Kernel, AABBPrimitive>;
@@ -65,8 +70,9 @@ double CalcDist(const std::vector<Kernel::Point_3>& source, const std::vector<Ke
         auto next = source_segs[(i + 1) % source_segs.size()];
         auto proj = aabb.closest_point(next.start());
         double d = std::sqrt(CGAL::squared_distance(proj, next.start()));
-        dist += d * (std::sqrt(curr.squared_length()) + std::sqrt(next.squared_length()));
+        dist += 0.5 * d * (std::sqrt(curr.squared_length()) + std::sqrt(next.squared_length()));
     }
+    dist /= source_total_len;
     return dist;
 }
 
@@ -82,6 +88,32 @@ int main(int argc, char* argv[])
         auto src_line = LoadGumLine(parser.get("-s"));
         auto tgt_line = LoadGumLine(parser.get("-t"));
         std::cout << "Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+
+        // auto tgt_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\gt\L\gumline.obj)");
+        // auto src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\mesh_seg_net\L\gumline.obj)");
+        // std::cout << "mesh seg net Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\pct\L\gumline.obj)");
+        // std::cout << "pct Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\pointnet++\L\gumline.obj)");
+        // std::cout << "pointnet++ Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\TSegNet\L\gumline.obj)");
+        // std::cout << "TSegNet Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\ours\L\gumline.obj)");
+        // std::cout << "ours Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+
+        // std::cout << "\n";
+        
+        // tgt_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\gt\U\gumline.obj)");
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\mesh_seg_net\U\gumline.obj)");
+        // std::cout << "mesh seg net Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\pct\U\gumline.obj)");
+        // std::cout << "pct Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\pointnet++\U\gumline.obj)");
+        // std::cout << "pointnet++ Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\TSegNet\U\gumline.obj)");
+        // std::cout << "TSegNet Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        // src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\ours\U\gumline.obj)");
+        // std::cout << "ours Dist = " << CalcDist(src_line, tgt_line) << std::endl;
     }
     catch(const std::exception& e)
     {
