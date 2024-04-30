@@ -502,12 +502,16 @@ void FixMeshWithLabel(
         internal::FixSelfIntersection(m, max_retry);
     }
 
-    if (keep_largest_connected_component)
+    if(keep_largest_connected_component)
     {
-        size_t num = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, large_cc_threshold);
-        if (gVerbose)
+        using Dummy = internal::EmptyMap<typename boost::graph_traits<Polyhedron>::face_descriptor, typename boost::graph_traits<Polyhedron>::faces_size_type>;
+        size_t total_num = CGAL::Polygon_mesh_processing::connected_components(m, Dummy());
+        size_t num_to_remove = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, large_cc_threshold, CGAL::parameters::dry_run(true));
+        num_to_remove = std::min(total_num - 1, num_to_remove);
+        CGAL::Polygon_mesh_processing::keep_largest_connected_components(m, total_num - num_to_remove);
+        if(gVerbose)
         {
-            std::cout << "Remove " << num << " small connected components." << std::endl;
+            std::cout << "Remove " << num_to_remove << " small connected components." << std::endl;
         }
     }
 
