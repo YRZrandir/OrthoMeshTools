@@ -447,7 +447,7 @@ namespace
     }
 }
 
-bool GumTrimLine(std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth, double fix_factor)
+bool GumTrimLine(std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth, bool fix, bool debug_output)
 {
     Polyhedron mesh;
     if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
@@ -610,7 +610,10 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
         hv->_label = label;
     }
 
-    mesh.WriteOBJ("processed_mesh" + std::to_string(mesh.size_of_facets()) + ".obj");
+    if(debug_output)
+    {
+        mesh.WriteOBJ("processed_mesh" + std::to_string(mesh.size_of_facets()) + ".obj");
+    }
 
     // Recompute label components
     for(auto hf : CGAL::faces(mesh))
@@ -677,7 +680,10 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
         }
         part_mesh.UpdateFaceLabels2();
         printf("SubMesh valid. F = %zd\n", part_mesh.size_of_facets());
-        part_mesh.WriteOBJ("part_mesh" + std::to_string(part_mesh.size_of_vertices()) + ".obj");
+        if(debug_output)
+        {
+            part_mesh.WriteOBJ("part_mesh" + std::to_string(part_mesh.size_of_vertices()) + ".obj");
+        }
         /* Extract borders */
         std::vector<hHalfedge> border_halfedges;
         CGAL::Polygon_mesh_processing::extract_boundary_cycles(part_mesh, std::back_inserter(border_halfedges));
@@ -700,7 +706,10 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
             {
                 curve.AddPoint(hh->vertex()->point(), hh->opposite()->facet()->_label);
             }
-            curve.WriteOBJ("curve_nosmooth" + std::to_string(curve.size()) + ".obj");
+            if(debug_output)
+            {
+                curve.WriteOBJ("curve_nosmooth" + std::to_string(curve.size()) + ".obj");
+            }
             for (size_t iteration = 0; iteration < smooth; iteration++)
             {
                 std::vector<Point_3> new_points = curve.GetPoints();
@@ -721,7 +730,10 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
             {
                 curve.LoadCrownFrame(*crown_frames);
             }
-            curve.WriteOBJ("curve" + std::to_string(curve.size()) + ".obj");
+            if(debug_output)
+            {
+                curve.WriteOBJ("curve" + std::to_string(curve.size()) + ".obj");
+            }
             trim_points.push_back(curve);
             printf("Added curve of %zd points.\n", curve.size());
         }
@@ -779,11 +791,14 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
     {
         final_curve.LoadCrownFrame(*crown_frames);
     }
-    if(fix_factor != 0.0)
+    if(fix)
     {
-        final_curve.FixAllCurve(aabb_tree, fix_factor);
+        final_curve.FixAllCurve(aabb_tree, 1.0);
     }
-    final_curve.WriteOBJ("before_smooth.obj");
+    if(debug_output)
+    {
+        final_curve.WriteOBJ("before_smooth.obj");
+    }
 
 #if 0
     auto forces = ComputeForces(mesh);
@@ -812,7 +827,10 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
             auto f = f0 * w0 + f1 * w1 + f2 * w2;
             final_curve[i] = aabb_tree.closest_point(p + f * 0.1);
         }
-        final_curve.WriteOBJ("after_force" + std::to_string(it) + ".obj");
+        if(debug_output)
+        {
+            final_curve.WriteOBJ("after_force" + std::to_string(it) + ".obj");
+        }
     }
 #endif
 

@@ -787,7 +787,7 @@ namespace internal
     };
 
     template <typename Kernel, typename AABBTree>
-    Curve<Kernel> Merge(const Curve<Kernel> &curve0, const Curve<Kernel> &curve1, const AABBTree& guide_mesh )
+    Curve<Kernel> Merge(const Curve<Kernel> &curve0, const Curve<Kernel> &curve1, const AABBTree& guide_mesh, bool debug_output = false )
     {
         // if(curve0.MaxLabel() > curve1.MinLabel())
         // {
@@ -805,38 +805,6 @@ namespace internal
         typename Kernel::Plane_3 connecting_plane(c0, c1, c0 + mid_up);
         typename Kernel::Line_3 line(c0, c1);
         typename Kernel::Vector_3 line_dir = c1 - c0;
-
-        std::pair<size_t, size_t> closest_pair;
-        // {
-        //     double min_dist = std::numeric_limits<double>::max();
-        //     curve0.ForEachSegment([&](const typename Kernel::Point_3& p0, const typename Kernel::Point_3& p1, int l0, int l1, size_t idx)
-        //     {
-        //         if(l0 == curve0.MaxLabel() && CGAL::angle(p1 - p0, connecting_plane.orthogonal_vector()) == CGAL::Angle::ACUTE)
-        //         {
-        //             double d = CGAL::squared_distance(connecting_plane.projection(p0), p0);
-        //             if(d < min_dist)
-        //             {
-        //                 closest_pair.first = idx;
-        //                 min_dist = d;
-        //             }
-        //         }
-        //     });
-        // }
-        // {
-        //     double min_dist = std::numeric_limits<double>::max();
-        //     curve1.ForEachSegment([&](const typename Kernel::Point_3& p0, const typename Kernel::Point_3& p1, int l0, int l1, size_t idx)
-        //     {
-        //         if(l0 == curve1.MinLabel() && CGAL::angle(p1 - p0, connecting_plane.orthogonal_vector()) == CGAL::Angle::OBTUSE)
-        //         {
-        //             double d = CGAL::squared_distance(connecting_plane.projection(p0), p0);
-        //             if(d < min_dist)
-        //             {
-        //                 closest_pair.second = idx;
-        //                 min_dist = d;
-        //             }
-        //         }
-        //     });
-        // }
 
         bool found_fail1 = true;
         bool found_fail2 = true;
@@ -912,10 +880,6 @@ namespace internal
             } while (it0 != end0);
         }
         
-        closest_pair.first = closest_its.first.Idx();
-        closest_pair.second = closest_its.second.Idx();
-        
-        // TODO: Change following code to using iterators.
         double w0 = 1.0f;
         double w1 = 0.0f;
 
@@ -1015,80 +979,50 @@ namespace internal
             it--;
         }
 
-        // if(start_pair.first < closest_pair.first)
-        // {
-        //     start_pair.first = static_cast<size_t>(start_pair.first * 0.7 + closest_pair.first * 0.3);
-        // }
-        // else
-        // {
-        //     start_pair.first = static_cast<size_t>(start_pair.first * 0.7 + (closest_pair.first + curve0.size()) * 0.3) % curve0.size();
-        // }
-        // if(end_pair.first > closest_pair.first)
-        // {
-        //     end_pair.first = static_cast<size_t>(end_pair.first * 0.7 + closest_pair.first * 0.3);
-        // }
-        // else
-        // {
-        //     end_pair.first = static_cast<size_t>(closest_pair.first * 0.3 + (curve0.size() + end_pair.first) * 0.7) % curve0.size();
-        // }
-        // if(start_pair.second < closest_pair.second)
-        // {
-        //     start_pair.second = static_cast<size_t>(start_pair.second * 0.7 + closest_pair.second * 0.3);
-        // }
-        // else
-        // {
-        //     start_pair.second = static_cast<size_t>(start_pair.second * 0.7 + (closest_pair.second + curve1.size()) * 0.3) % curve1.size();
-        // }
-        // if(end_pair.second > closest_pair.second)
-        // {
-        //     end_pair.second = static_cast<size_t>(end_pair.second * 0.7 + closest_pair.second * 0.3);
-        // }
-        // else
-        // {
-        //     end_pair.second = static_cast<size_t>(closest_pair.second * 0.3 + (curve1.size() + end_pair.second) * 0.7) % curve1.size();
-        // }
-
-        std::ofstream ofs("./merge" + std::to_string(curve0.size()) + ".obj");
-        for (size_t i = 0; i < curve0.size(); i++)
+        if(debug_output)
         {
-            float r = 0;
-            float g = 0;
-            float b = 0;
-            if(i == closest_its.first.Idx())
+            std::ofstream ofs("./merge" + std::to_string(curve0.size()) + ".obj");
+            for (size_t i = 0; i < curve0.size(); i++)
             {
-                r = 1.f;
-            }
-            if(i == start_it.first.Idx())
-            {
-                g = 1.f;
-            }
-            if(i == end_it.first.Idx())
-            {
-                b = 1.f;
-            }
+                float r = 0;
+                float g = 0;
+                float b = 0;
+                if(i == closest_its.first.Idx())
+                {
+                    r = 1.f;
+                }
+                if(i == start_it.first.Idx())
+                {
+                    g = 1.f;
+                }
+                if(i == end_it.first.Idx())
+                {
+                    b = 1.f;
+                }
 
-            ofs << "v " << curve0[i].x() << ' ' << curve0[i].y() << ' ' << curve0[i].z() << ' ' << r << ' ' << g << ' ' << b << '\n';
+                ofs << "v " << curve0[i].x() << ' ' << curve0[i].y() << ' ' << curve0[i].z() << ' ' << r << ' ' << g << ' ' << b << '\n';
+            }
+            for(size_t i = 0; i < curve1.size(); i++)
+            {
+                float r = 0;
+                float g = 0;
+                float b = 0;
+                if(i == closest_its.second.Idx())
+                {
+                    r = 1.f;
+                }
+                if(i == start_it.second.Idx())
+                {
+                    g = 1.f;
+                }
+                if(i == end_it.second.Idx())
+                {
+                    b = 1.f;
+                }
+                ofs << "v " << curve1[i].x() << ' ' << curve1[i].y() << ' ' << curve1[i].z() << ' ' << r << ' ' << g << ' ' << b << '\n';
+            }
+            ofs.close();
         }
-        for(size_t i = 0; i < curve1.size(); i++)
-        {
-            float r = 0;
-            float g = 0;
-            float b = 0;
-            if(i == closest_its.second.Idx())
-            {
-                r = 1.f;
-            }
-            if(i == start_it.second.Idx())
-            {
-                g = 1.f;
-            }
-            if(i == end_it.second.Idx())
-            {
-                b = 1.f;
-            }
-            ofs << "v " << curve1[i].x() << ' ' << curve1[i].y() << ' ' << curve1[i].z() << ' ' << r << ' ' << g << ' ' << b << '\n';
-        }
-        ofs.close();
         
         Curve<Kernel> midcurve1;
         {
@@ -1216,24 +1150,12 @@ namespace internal
         result_curve.InsertAt(midcurve1, result_curve.size());
         result_curve.InsertAt(subcurve2, result_curve.size());
         result_curve.InsertAt(midcurve2, result_curve.size());
-
-        //std::ofstream ofs("./merge.obj");
-        // for (size_t i = 0; i < result_curve.size(); i++)
-        // {
-        //     //std::array<float, 3> c = COLORS[result_curve.Label(i) % COLORS.size()];
-        //     auto p0 = i == 0 ? result_curve[result_curve.size() - 1] : result_curve[i - 1];
-        //     auto p1 = result_curve[i];
-        //     auto p2 = result_curve[(i + 1) % result_curve.size()];
-        //     double dx = std::sqrt(CGAL::squared_distance(CGAL::midpoint(p0, p2), p1));
-        //     auto c = tinycolormap::GetColor(dx * 100);
-        //     ofs << "v " << result_curve[i].x() << ' ' << result_curve[i].y() << ' ' << result_curve[i].z() << ' ' << c[0] << ' ' << c[1] << ' ' << c[2] << '\n';
-        // }
         result_curve.UpdateData();
         return result_curve;
     }
 }
 
 
-bool GumTrimLine( std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth, double fix_factor );
+bool GumTrimLine( std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth, bool fix, bool debug_output );
 
 #endif
