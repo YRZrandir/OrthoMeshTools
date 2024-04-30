@@ -12,9 +12,16 @@
 #include <CGAL/AABB_traits.h>
 #include <CGAL/linear_least_squares_fitting_3.h>
 #include <CGAL/Weighted_point_3.h>
+#include <CGAL/convex_hull_3.h>
+#include <CGAL/Polygon_2.h>
+#include <CGAL/Polygon_mesh_processing/triangulate_faces.h>
+#include <CGAL/Surface_mesh.h>
+#include <CGAL/boost/graph/io.h>
+#include <CGAL/Kernel/global_functions.h>
 #include "tinycolormap.hpp"
 #include "../EasyOBJ.h"
 #include "../Ortho.h"
+#include <CGAL/linear_least_squares_fitting_3.h>
 
 namespace internal
 {
@@ -215,18 +222,18 @@ namespace internal
             {
                 ofs << "l " << i << " " << (i + 1) % (_points.size() + 1) << '\n';
             }
-            // for(auto& [label, c] : _centroids)
-            // {
-            //     ofs << "v " << c.x() << ' ' << c.y() << ' ' << c.z() << " 1 0 0\n";
-            // }
-            // for(auto& [label, up] : _upwards)
-            // {
-            //     for(int i = 0; i < 100; i++)
-            //     {
-            //         Point_3 p = _centroids.at(label) + up * 0.1f * (i + 1);
-            //         ofs << "v " << p.x() << ' ' << p.y() << ' ' << p.z() << " 0 0 1\n";
-            //     }
-            // }
+            for(auto& [label, c] : _centroids)
+            {
+                ofs << "v " << c.x() << ' ' << c.y() << ' ' << c.z() << " 1 0 0\n";
+            }
+            for(auto& [label, up] : _upwards)
+            {
+                for(int i = 0; i < 100; i++)
+                {
+                    Point_3 p = _centroids.at(label) + up * 0.1f * (i + 1);
+                    ofs << "v " << p.x() << ' ' << p.y() << ' ' << p.z() << " 0 0 1\n";
+                }
+            }
             ofs << std::endl;
         }
         void ForEachSegment(const std::function<void(const Point_3& p0, const Point_3& p1, int l0, int l1, size_t idx)>& func) const
@@ -439,15 +446,213 @@ namespace internal
             }
         }
         template <typename AABBTree>
+        void FixShapeConvex(int label, const AABBTree& guide_mesh)
+        {
+            if(_points.size() <= 2)
+            {
+                return;
+            }
+            std::vector<std::vector<iterator>> segs;
+            iterator start_pos = CreateIterator(0);
+            int cnt = 0;
+            while(start_pos.Label() != label)
+            {
+                start_pos++;
+                if(++cnt >= _points.size())
+                {
+                    return;
+                }
+            }
+            cnt = 0;
+            while(start_pos.Label() == label)
+            {
+                start_pos--;
+                if(++cnt >= _points.size())
+                {
+                    return;
+                }
+            }
+            start_pos++;
+            if(start_pos.Label() == label)
+            {
+                segs.emplace_back();
+            }
+            else
+            {
+                return;
+            }
+            iterator end_pos = start_pos;
+            iterator it = start_pos;
+            do
+            {
+                if(it.Label() == label)
+                {
+                    segs.back().push_back(it);
+                }
+                else
+                {
+                    if(!segs.back().empty())
+                    {
+                        segs.emplace_back();
+                    }
+                }
+                it++;
+            }while(it != end_pos);
+            if(segs.back().empty())
+            {
+                segs.pop_back();
+            }
+            auto tooth_dir = _upwards.at(label);
+            typename Kernel::Line_3 tooth_axis(_centroids[label], _upwards[label]);
+            for(size_t i = 0; i < segs.size(); i++)
+            {
+                auto& seg = segs[i];
+                if(seg.size() <= 2)
+                {
+                    continue;
+                }
+                std::vector<Point_3> segpoints;
+                for(auto& it : seg)
+                {
+                    segpoints.push_back(it.Point());
+                }
+                // CGAL::Polyhedron_3<Kernel> convexhull;
+                // CGAL::convex_hull_3(segpoints.begin(), segpoints.end(), convexhull);
+                // CGAL::Polygon_mesh_processing::triangulate_faces(convexhull);
+                //CGAL::IO::write_polygon_mesh("convex_hull_" + std::to_string(seg[0].Label()) + "_" + std::to_string(i) + ".obj", convexhull);
+                typename Kernel::Plane_3 plane;
+                typename Kernel::Point_3 centroid;
+                CGAL::linear_least_squares_fitting_3(segpoints.begin(), segpoints.end(), plane, centroid, CGAL::Dimension_tag<0>());
+
+                auto p1 = centroid + plane.orthogonal_vector() * 100.0;
+                double signed_v = 0.0;
+                for(size_t k = 1; k < segpoints.size(); k++)
+                {
+                    auto p2 = segpoints[(k + 1) % segpoints.size()];
+                    auto p3 = segpoints[k];
+                    signed_v += CGAL::determinant(p1 - segpoints[0], p1 - p2, p1 - p3);
+                }
+                if(signed_v > 0)
+                {
+                    //std::cout << "Turn " << std::to_string(seg[0].Label()) + "_" + std::to_string(i)<< std::endl;
+                    plane = plane.opposite();
+                }
+
+                std::vector<Point_3> proj_segpoints;
+                for(auto& p : segpoints)
+                {
+                    proj_segpoints.push_back(plane.projection(p));
+                }
+                
+                std::vector<typename Kernel::Point_2> segpoints_uv;
+                for(auto& p : proj_segpoints)
+                {
+                    segpoints_uv.push_back(plane.to_2d(p));
+                }
+
+                std::vector<typename Kernel::Point_2> convex_points;
+                CGAL::convex_hull_2(segpoints_uv.begin(), segpoints_uv.end(), std::back_inserter(convex_points));
+                CGAL::Polygon_2<Kernel> convex_hull(convex_points.begin(), convex_points.end());
+
+                // {
+                //     CGAL::Surface_mesh<typename Kernel::Point_3> convex_hull3d;
+                //     std::vector<typename CGAL::Surface_mesh<typename Kernel::Point_3>::Vertex_index> vtxhandles;
+                //     for(auto p : convex_points)
+                //     {
+                //         vtxhandles.push_back(convex_hull3d.add_vertex(plane.to_3d(p)));
+                //     }
+                //     convex_hull3d.add_face(vtxhandles);
+                //     CGAL::IO::write_polygon_mesh("convex_hull3d_" + std::to_string(seg[0].Label()) + "_" + std::to_string(i) + ".obj", convex_hull3d);
+                // }
+
+                std::vector<unsigned char> is_convex(segpoints_uv.size(), false);
+                int first_convex_id = 0;
+                {
+                    int convex_id_rot = 0;
+                    for(int k = 0; k < segpoints_uv.size(); k++)
+                    {
+                        if(convex_hull.has_on_boundary(segpoints_uv[k]))
+                        {
+                            auto conv_pt = std::find_if(convex_points.begin(), convex_points.end(), [&](auto& pt){ return segpoints_uv[k] == pt; });
+                            if(conv_pt != convex_points.end())
+                            {
+                                first_convex_id = k;
+                                is_convex[k] = true;
+                                std::rotate(convex_points.begin(), conv_pt, convex_points.end());
+                                break;
+                            }
+                        }
+                    }
+                }
+                auto convex_iterator = convex_points.begin() + 1;
+                for(int k = first_convex_id + 1; k < segpoints_uv.size(); k++)
+                {
+                    if(convex_iterator == convex_points.end())
+                    {
+                        break;
+                    }
+                    if(*convex_iterator == segpoints_uv[k])
+                    {
+                        is_convex[k] = true;
+                        convex_iterator++;
+                    }
+                }
+                is_convex.front() = true;
+                is_convex.back() = true;
+                for(int k = 1; k < segpoints.size() - 1; k++)
+                {
+                    if(!is_convex[k])
+                    {
+                        int start_id = k;
+                        int end_id = k;
+                        while(start_id > 0 && !is_convex[start_id])
+                            start_id--;
+                        while(end_id < segpoints.size() && !is_convex[end_id])
+                            end_id++;
+                        seg[k].Point() = seg[start_id].Point() + (float)(k - start_id) / (end_id - start_id + 1) * (seg[end_id].Point() - seg[start_id].Point());
+                    }
+                }
+                
+                // while(k < segpoints.size())
+                // {
+                //     if(CGAL::bounded_side_2(convex_points.begin(), convex_points.end(), segpoints_uv[k], Kernel()) == CGAL::ON_BOUNDED_SIDE || 
+                //         CGAL::are_ordered_along_line(convex_points.front(), convex_points.back(), segpoints_uv[k]))
+                //     {
+                //         int start = k;
+                //         int end = start + 1;
+                //         while(end < segpoints.size() &&
+                //             (CGAL::bounded_side_2(convex_points.begin(), convex_points.end(), segpoints_uv[end], Kernel()) == CGAL::ON_BOUNDED_SIDE || 
+                //             CGAL::are_ordered_along_line(convex_points.front(), convex_points.back(), segpoints_uv[end])))
+                //         {
+                //             end++;
+                //         }
+                //         if(end >= segpoints.size())
+                //         {
+                //             end = segpoints.size() - 1;
+                //         }
+                //         int range = end - start;
+                //         for(int j = start; j < end; j++)
+                //         {
+                //             seg[j].Point() = segpoints[start - 1] + (float)(j - start + 1) / (range + 1) * (segpoints[end] - segpoints[start - 1]);
+                //         }
+                //         k = end;
+                //     }
+                // }
+            }
+
+        }
+        template <typename AABBTree>
         void FixAllCurve(const AABBTree& guide_mesh, double fix_factor)
         {
             printf("Adjusting curve...\n");
             std::unordered_set<int> all_labels(_labels.begin(), _labels.end());
             for(int label : all_labels)
             {
-                if(label % 10 <= 4)
+
+                if(label % 10 <= 8 && label % 10 > 1)
                 {
-                    FixShape(label, guide_mesh, fix_factor);
+                    FixShapeConvex(label, guide_mesh);
+                    // FixShape(label, guide_mesh, fix_factor);
                 }
             }
         }
@@ -843,51 +1048,53 @@ namespace internal
         //     end_pair.second = static_cast<size_t>(closest_pair.second * 0.3 + (curve1.size() + end_pair.second) * 0.7) % curve1.size();
         // }
 
-        // std::ofstream ofs("./merge" + std::to_string(curve0.size()) + ".obj");
-        // for (size_t i = 0; i < curve0.size(); i++)
-        // {
-        //     float r = 0;
-        //     float g = 0;
-        //     float b = 0;
-        //     if(i == closest_its.first.Idx())
-        //     {
-        //         r = 1.f;
-        //     }
-        //     if(i == start_it.first.Idx())
-        //     {
-        //         g = 1.f;
-        //     }
-        //     if(i == end_it.first.Idx())
-        //     {
-        //         b = 1.f;
-        //     }
+        std::ofstream ofs("./merge" + std::to_string(curve0.size()) + ".obj");
+        for (size_t i = 0; i < curve0.size(); i++)
+        {
+            float r = 0;
+            float g = 0;
+            float b = 0;
+            if(i == closest_its.first.Idx())
+            {
+                r = 1.f;
+            }
+            if(i == start_it.first.Idx())
+            {
+                g = 1.f;
+            }
+            if(i == end_it.first.Idx())
+            {
+                b = 1.f;
+            }
 
-        //     ofs << "v " << curve0[i].x() << ' ' << curve0[i].y() << ' ' << curve0[i].z() << ' ' << r << ' ' << g << ' ' << b << '\n';
-        // }
-        // for(size_t i = 0; i < curve1.size(); i++)
-        // {
-        //     float r = 0;
-        //     float g = 0;
-        //     float b = 0;
-        //     if(i == closest_its.second.Idx())
-        //     {
-        //         r = 1.f;
-        //     }
-        //     if(i == start_it.second.Idx())
-        //     {
-        //         g = 1.f;
-        //     }
-        //     if(i == end_it.second.Idx())
-        //     {
-        //         b = 1.f;
-        //     }
-        //     ofs << "v " << curve1[i].x() << ' ' << curve1[i].y() << ' ' << curve1[i].z() << ' ' << r << ' ' << g << ' ' << b << '\n';
-        // }
-        // ofs.close();
+            ofs << "v " << curve0[i].x() << ' ' << curve0[i].y() << ' ' << curve0[i].z() << ' ' << r << ' ' << g << ' ' << b << '\n';
+        }
+        for(size_t i = 0; i < curve1.size(); i++)
+        {
+            float r = 0;
+            float g = 0;
+            float b = 0;
+            if(i == closest_its.second.Idx())
+            {
+                r = 1.f;
+            }
+            if(i == start_it.second.Idx())
+            {
+                g = 1.f;
+            }
+            if(i == end_it.second.Idx())
+            {
+                b = 1.f;
+            }
+            ofs << "v " << curve1[i].x() << ' ' << curve1[i].y() << ' ' << curve1[i].z() << ' ' << r << ' ' << g << ' ' << b << '\n';
+        }
+        ofs.close();
         
         Curve<Kernel> midcurve1;
         {
+            Curve<Kernel> best_curve;
             double error = 0.0;
+            double min_error = 99999999;
             int max_try = std::min(closest_its.first - start_it.first, end_it.second - closest_its.second) - 1;
             do
             {
@@ -906,10 +1113,15 @@ namespace internal
                 {
                     if(guide_mesh.closest_point_and_primitive(midcurve1[i]).second->_label != 0)
                     {
-                        error += 1.0;
+                        //error += 1.0;
                     }
                 }
                 error /= midcurve1.size();
+                if(error < min_error)
+                {
+                    min_error = error;
+                    best_curve = midcurve1;
+                }
                 if(error < 0.3)
                 {
                     break;
@@ -923,11 +1135,13 @@ namespace internal
                     midcurve1 = Curve<Kernel>();
                 }
             } while(max_try > 0);
-            
+            midcurve1 = best_curve;
         }
         Curve<Kernel> midcurve2;
         {
             double error = 0.0;
+            double min_error = 99999999;
+            Curve<Kernel> best_curve;
             int max_try = std::min(closest_its.second - start_it.second, end_it.first - closest_its.first) - 1;
             do
             {
@@ -946,10 +1160,15 @@ namespace internal
                 {
                     if(guide_mesh.closest_point_and_primitive(midcurve2[i]).second->_label != 0)
                     {
-                        error += 1.0;
+                        //error += 1.0;
                     }
                 }
                 error /= midcurve2.size();
+                if(error < min_error)
+                {
+                    min_error = error;
+                    best_curve = midcurve2;
+                }
                 if(error < 0.3)
                 {
                     break;
@@ -963,6 +1182,7 @@ namespace internal
                     midcurve2 = Curve<Kernel>();
                 }
             }while(max_try > 0);
+            midcurve2 = best_curve;
         }
         Curve<Kernel> subcurve1 = curve0.GetSubCurve(end_it.first, start_it.first);
         Curve<Kernel> subcurve2 = curve1.GetSubCurve(end_it.second, start_it.second);

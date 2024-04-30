@@ -3,7 +3,8 @@
 #include <iostream>
 #include <filesystem>
 #include <unordered_map>
-
+#define TINYCOLORMAP_WITH_EIGEN
+#include <tinycolormap.hpp>
 #include <CGAL/boost/graph/Face_filtered_graph.h>
 #include <CGAL/boost/graph/copy_face_graph.h>
 #include <CGAL/boost/graph/io.h>
@@ -11,9 +12,13 @@
 #include <CGAL/linear_least_squares_fitting_3.h>
 #include <CGAL/Polygon_mesh_processing/border.h>
 #include <CGAL/Polygon_mesh_processing/triangulate_hole.h>
+#include <CGAL/Weights/cotangent_weights.h>
+#include <CGAL/Weights/mixed_voronoi_region_weights.h>
+#include <CGAL/Polygon_mesh_processing/compute_normal.h>
 #include "../MeshFix/MeshFix.h"
 #include "GumTrimLine.h"
 #include "../Ortho.h"
+#include <omp.h>
 
 namespace
 {
@@ -46,6 +51,32 @@ namespace
             for (auto nei : CGAL::vertices_around_target(v, mesh))
             {
                 if (!nei->_processed && nei->_label != 0)
+                {
+                    front.push_back(nei);
+                    vertices.push_back(nei);
+                    nei->_processed = true;
+                }
+            }
+        }
+
+        return vertices;
+    }
+
+    std::vector<hVertex> ConnectedComponents(hVertex hv, const Polyhedron &mesh, const std::function<bool(hVertex)>& pred)
+    {
+        std::vector<hVertex> vertices;
+        std::deque<hVertex> front;
+        front.push_back(hv);
+        vertices.push_back(hv);
+        hv->_processed = true;
+
+        while (!front.empty())
+        {
+            hVertex v = front.front();
+            front.pop_front();
+            for (auto nei : CGAL::vertices_around_target(v, mesh))
+            {
+                if (nei != nullptr && !nei->_processed && pred(nei))
                 {
                     front.push_back(nei);
                     vertices.push_back(nei);
@@ -264,6 +295,156 @@ namespace
             hv->_label = label;
         }
     }
+
+    std::unordered_map<hVertex, Vec3> ComputeForces(Polyhedron& mesh)
+    {
+        std::vector<hVertex> vhandles;
+        for(auto hv : CGAL::vertices(mesh))
+        {
+            vhandles.push_back(hv);
+        }
+
+        std::unordered_map<hVertex, Vec3> dx_map;
+        std::unordered_map<hVertex, double> curv_map;
+#pragma omp parallel for
+        for(int i = 0; i < vhandles.size(); i++)
+        {
+            auto hv = vhandles[i];
+            auto xi = hv->point();
+            Vec3 dx(0.0, 0.0, 0.0);
+            double A = 0.0;
+            for(auto nei : CGAL::halfedges_around_source(hv, mesh))
+            {
+                auto xj = nei->vertex()->point();
+                auto xb = nei->next()->vertex()->point();
+                auto xa = nei->opposite()->next()->vertex()->point();
+                auto xij = xj - xi;
+                double w = 0.5 * CGAL::Weights::cotangent_weight(xa, xj, xb, xi);
+                dx += w * xij;
+            }
+            for(auto t : CGAL::faces_around_target(hv->halfedge(), mesh))
+            {
+                auto h = t->halfedge();
+                while(h->vertex() != hv)
+                {
+                    h = h->next();
+                }
+                auto q = h->vertex()->point();
+                auto r = h->next()->vertex()->point();
+                auto p = h->next()->next()->vertex()->point();
+                A += CGAL::Weights::mixed_voronoi_area(p, q, r);
+            }
+            auto normal = CGAL::Polygon_mesh_processing::compute_vertex_normal(hv, mesh);
+            double curv = 0.0;
+            if(CGAL::angle(normal, dx) == CGAL::Angle::ACUTE)
+            {
+                dx /= 2 * A;
+                curv = 0.5 * std::sqrt(dx.squared_length());
+            }
+#pragma omp critical
+{
+            dx_map[hv] = dx;
+            if(curv < 0.1)
+            {
+                curv = 0.0;
+            }
+            curv_map[hv] = curv;
+}
+        }
+
+
+
+        for(auto hv : CGAL::vertices(mesh))
+        {
+            hv->_processed = false;
+        }
+        std::vector<std::vector<hVertex>> connected_components;
+        for(auto hv : CGAL::vertices(mesh))
+        {
+            if(!hv->_processed && curv_map[hv] != 0.0)
+            {
+                connected_components.push_back(ConnectedComponents(hv, mesh, [&](hVertex v){ return curv_map[v] != 0.0; }));
+            }
+        }
+        for(auto& part : connected_components)
+        {
+            if(part.size() < 1000)
+            {
+                for(auto hv : part)
+                {
+                    curv_map[hv] = 0.0;
+                }
+            }
+            else
+            {
+                std::cout << part.size() << std::endl;
+            }
+        }
+
+        std::vector<Eigen::Vector3f> colors;
+        for(auto hv : CGAL::vertices(mesh))
+        {
+            Eigen::Vector3f color = tinycolormap::GetJetColor(curv_map[hv]).ConvertToEigen().cast<float>();
+            colors.push_back(color);
+        }
+        auto [vertices, indices] = mesh.ToVerticesTriangles();    
+        WriteVCFAssimp<KernelEpick, size_t>("./curv.obj", vertices, colors, indices);
+
+        std::unordered_map<hVertex, Vec3> force_map;
+        for(auto hv : CGAL::vertices(mesh))
+        {
+            force_map[hv] = Vec3(0.0, 0.0, 0.0);
+        }
+#pragma omp parallel for
+        for(int i = 0; i < vhandles.size(); i++)
+        {
+            auto hv = vhandles[i];
+            std::unordered_set<hVertex> neighbors;
+            std::queue<hVertex> q;
+            q.push(hv);
+            neighbors.insert(hv);
+            while(!q.empty())
+            {
+                hVertex curr = q.front();
+                q.pop();
+                for(auto nei : CGAL::vertices_around_target(curr, mesh))
+                {
+                    if(neighbors.count(nei) == 0 && CGAL::squared_distance(nei->point(), hv->point()) < 3.0 * 3.0)
+                    {
+                        neighbors.insert(nei);
+                        q.push(nei);
+                    }
+                }
+            }
+
+            for(auto nei : neighbors)
+            {
+                if(curv_map[nei] > 1.0)
+                {
+                    //continue;
+                }
+                auto d = hv->point() - nei->point();
+                if(curv_map[hv] > curv_map[nei])            
+                {
+#pragma omp critical
+{
+                    force_map[nei] += (curv_map[hv] - curv_map[nei]) / d.squared_length() * d;
+}
+                }
+            }
+        }
+
+        for(auto& [hv, f] : force_map)
+        {
+            if(f.squared_length() > 1e-8)
+            {
+                f /= std::sqrt(f.squared_length());
+            }
+        }
+
+
+        return force_map;
+    }
 }
 
 bool GumTrimLine(std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth, double fix_factor)
@@ -307,6 +488,8 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
     {
         throw MeshError("Input mesh has non triangle face: " + input_file);
     }
+
+    mesh.keep_largest_connected_components(1);
 
     for(auto hv : CGAL::vertices(mesh))
     {
@@ -601,7 +784,39 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
         final_curve.FixAllCurve(aabb_tree, fix_factor);
     }
     final_curve.WriteOBJ("before_smooth.obj");
-    for (size_t iteration = 0; iteration < 1; iteration++)
+
+#if 0
+    auto forces = ComputeForces(mesh);
+    for(int it = 0; it < 3; it++)
+    {
+        for(size_t i = 0; i < final_curve.size(); i++)
+        {
+            auto p0 = final_curve[i];
+            auto [p, hf] = aabb_tree.closest_point_and_primitive(p0);
+            auto hv0 = hf->halfedge()->vertex();
+            auto hv1 = hf->halfedge()->next()->vertex();
+            auto hv2 = hf->halfedge()->prev()->vertex();
+            auto v0 = hv0->point();
+            auto v1 = hv1->point();
+            auto v2 = hv2->point();
+            double w0 = std::sqrt(CGAL::cross_product(v0 - p, v1 - p).squared_length());
+            double w1 = std::sqrt(CGAL::cross_product(v1 - p, v2 - p).squared_length());
+            double w2 = std::sqrt(CGAL::cross_product(v2 - p, v0 - p).squared_length());
+            double wsum = w0 + w1 + w2;
+            w0 /= wsum;
+            w1 /= wsum;
+            w2 /= wsum;
+            auto f0 = forces[hv0];
+            auto f1 = forces[hv1];
+            auto f2 = forces[hv2];
+            auto f = f0 * w0 + f1 * w1 + f2 * w2;
+            final_curve[i] = aabb_tree.closest_point(p + f * 0.1);
+        }
+        final_curve.WriteOBJ("after_force" + std::to_string(it) + ".obj");
+    }
+#endif
+
+    for (size_t iteration = 0; iteration < smooth; iteration++)
     {
         std::vector<Point_3> new_points = final_curve.GetPoints();
         for (size_t i = 0; i < new_points.size(); i++)

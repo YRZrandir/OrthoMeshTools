@@ -35,7 +35,7 @@ int main(int argc, char* argv[])
         std::string input_label = argparse.present("-li").value_or("");
         std::string output_label = argparse.present("-lo").value_or("");
         int large_cc_threshold = argparse.get<int>("--small_component_threshold");
-        bool keep_largest_connected_component = large_cc_threshold == 0;
+        bool keep_largest_connected_component = (large_cc_threshold != 0);
         bool fix_self_intersection = argparse.get<bool>("--fix_self_intersection");
         int smallhole_edge_num = argparse.get<int>("--smallhole_edge_num");
         float smallhole_size = argparse.get<float>("--smallhole_size");

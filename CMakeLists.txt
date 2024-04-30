@@ -57,7 +57,7 @@ if (BUILD_EXECUTABLES)
     target_link_libraries(HoleMerge PUBLIC Ortho argparse::argparse)
 
     add_executable(GumTrimLine "GumTrimLine/GumTrimLine.cpp" "GumTrimLine/GumTrimLineApp.cpp" "GumTrimLine/GumTrimLine.h" "MeshFix/MeshFix.cpp")
-    target_link_libraries(GumTrimLine PUBLIC Ortho argparse::argparse)
+    target_link_libraries(GumTrimLine PUBLIC Ortho argparse::argparse OpenMP::OpenMP_CXX)
 
     add_executable(ColorMeshByLabel "ColorMeshByLabel/ColorMeshByLabel.cpp" "ColorMeshByLabel/ColorMeshByLabel.h")
     target_link_libraries(ColorMeshByLabel PUBLIC Ortho argparse::argparse)
@@ -82,4 +82,7 @@ if (BUILD_EXECUTABLES)
 
     add_executable(GumLineCompare "GumLineCompare/GumLineCompare.cpp")
     target_link_libraries(GumLineCompare PUBLIC Ortho argparse::argparse)
+
+    add_executable(ColorMeshByCurv "ColorMeshByCurv/ColorMeshByCurv.cpp")
+    target_link_libraries(ColorMeshByCurv PUBLIC Ortho argparse::argparse)
 endif ()
