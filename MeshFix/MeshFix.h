@@ -18,8 +18,18 @@
 
 // TODO: remove this
 extern bool gVerbose;
+
 namespace internal
 {
+template <typename KeyType, typename ValueType>
+struct EmptyMap  // Doesn't do anything, just need it to satisfy function interface.
+{
+    using key_type = KeyType;
+    using value_type = ValueType;
+    using category = boost::writable_property_map_tag;
+    using reference = ValueType&;
+    friend void put(EmptyMap<KeyType, ValueType>& m, const KeyType& key, const ValueType& val ) {}
+};
 
 template <typename Kernel, typename SizeType>
 std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face)
@@ -332,7 +342,10 @@ void FixMesh(
     using Kernel = typename Polyhedron::Traits;
     using Triangle = TTriangle<typename Polyhedron::Vertex::size_type>;
     auto faces = internal::FixRoundingOrder<Kernel, typename Triangle::size_type>(input_vertices, input_faces);
-    std::cout << "After fix rounding F = " << faces.size() << std::endl;
+    if(gVerbose)
+    {
+        std::cout << "After fix rounding F = " << faces.size() << std::endl;
+    }
 
     size_t nb_removed_faces = 0;
     int cnt = 0;
@@ -360,10 +373,14 @@ void FixMesh(
 
     if(keep_largest_connected_component)
     {
-        size_t num = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, large_cc_threshold);
+        using Dummy = internal::EmptyMap<typename boost::graph_traits<Polyhedron>::face_descriptor, typename boost::graph_traits<Polyhedron>::faces_size_type>;
+        size_t total_num = CGAL::Polygon_mesh_processing::connected_components(m, Dummy());
+        size_t num_to_remove = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, large_cc_threshold, CGAL::parameters::dry_run(true));
+        num_to_remove = std::min(total_num - 1, num_to_remove);
+        CGAL::Polygon_mesh_processing::keep_largest_connected_components(m, total_num - num_to_remove);
         if(gVerbose)
         {
-            std::cout << "Remove " << num << " small connected components." << std::endl;
+            std::cout << "Remove " << num_to_remove << " small connected components." << std::endl;
         }
     }
 
@@ -456,7 +473,10 @@ void FixMeshWithLabel(
     using Kernel = typename Polyhedron::Traits;
     using Triangle = TTriangle<typename Polyhedron::Vertex::size_type>;
     auto faces = internal::FixRoundingOrder<Kernel, typename Triangle::size_type>(input_vertices, input_faces);
-    std::cout << "After fix rounding F=" << faces.size() << std::endl;
+    if(gVerbose)
+    {
+        std::cout << "After fix rounding F=" << faces.size() << std::endl;
+    }
     size_t nb_removed_faces = 0;
     int cnt = 0;
     do

@@ -21,7 +21,7 @@
 #include <pybind11/pybind11.h>
 #endif
 // TODO: remove this
-bool gVerbose = true;
+bool gVerbose = false;
 namespace 
 {
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
