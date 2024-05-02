@@ -20,8 +20,6 @@
 #ifdef FOUND_PYBIND11
 #include <pybind11/pybind11.h>
 #endif
-// TODO: remove this
-bool gVerbose = false;
 namespace 
 {
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
@@ -39,14 +37,14 @@ bool FixMeshFile(
         std::vector<KernelEpick::Point_3> vertices;
         std::vector<Triangle> faces;
         LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
-        if(gVerbose)
+        if(cfg.verbosity > 0)
         {
             printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
         }
         Polyhedron result;
         FixMesh<Polyhedron>(vertices, faces, result, cfg);
         result.WriteAssimp(output_mesh);
-        if(gVerbose)
+        if(cfg.verbosity > 0)
         {
             printf("Output V = %zd, F = %zd.\n", result.size_of_vertices(), result.size_of_facets());
         }
@@ -69,7 +67,7 @@ bool FixMeshFileWithLabel(
     std::vector<Triangle> faces;
     LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
     std::vector<int> labels = LoadLabels(input_label);
-    if(gVerbose)
+    if(cfg.verbosity > 0)
     {
         printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
     }
@@ -77,7 +75,7 @@ bool FixMeshFileWithLabel(
     FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, cfg);
     
     m.WriteAssimp(output_mesh);
-    if(gVerbose)
+    if(cfg.verbosity > 0)
     {
         printf("Output V = %zd, F = %zd.\n", m.size_of_vertices(), m.size_of_facets());
     }
@@ -125,7 +123,7 @@ bool FixMeshFileWithColor(
     {
         labels.push_back(color_to_int(colors[i]));
     }
-    if(gVerbose)
+    if(cfg.verbosity > 0)
     {
         printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
     }
@@ -140,7 +138,7 @@ bool FixMeshFileWithColor(
     }
 
     WriteVCFAssimp<typename Polyhedron::Traits::Kernel, size_t>(output_mesh, out_v, out_c, out_f);
-    if(gVerbose)
+    if(cfg.verbosity > 0)
     {
         printf("Output V = %zd, F = %zd.\n", m.size_of_vertices(), m.size_of_facets());
     }

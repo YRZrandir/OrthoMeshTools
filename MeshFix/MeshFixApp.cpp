@@ -23,6 +23,8 @@ int main(int argc, char* argv[])
     argparse.add_argument("--degenerate_cap_threshold", "-dc").help("the cosine of a minimum angle such that if a face has an angle greater than this bound, it is a cap").scan<'f', float>().nargs(1).default_value(std::cosf(170.f / 180.f * 3.14159f));
     argparse.add_argument("--degenerate_needle_threshold", "-dt").help("a bound on the ratio of the lengths of the longest edge and the shortest edge, such that a face having a ratio larger than the threshold is a needle.").scan<'f', float>().nargs(1).default_value(20.f);
     argparse.add_argument("--degenerate_len_threshold", "-dl").help("if different from 0, an edge collapsed will be prevented if the edge is longer than the threshold given").scan<'f', float>().nargs(1).default_value(0.f);
+    argparse.add_argument("--verbosity", "-v").help("0=slient, 1=normal, 2=verbose").scan<'i', int>().nargs(1).default_value(1).choices(0, 1, 2);
+    
     try
     {
         argparse.parse_args(argc, argv);
@@ -52,6 +54,7 @@ int main(int argc, char* argv[])
         cfg.degenerate_cap_threshold = argparse.get<float>("-dc");
         cfg.degenerate_needle_threshold = argparse.get<float>("-dt");
         cfg.degenerate_len_threshold = argparse.get<float>("-dl");
+        cfg.verbosity = argparse.get<int>("-v");
 
         if(!input_label.empty() && !output_label.empty())
         {

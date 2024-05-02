@@ -16,9 +16,6 @@
 #include <CGAL/Polyhedron_incremental_builder_3.h>
 #include <CGAL/Polyhedron_items_with_id_3.h>
 
-// TODO: remove this
-extern bool gVerbose;
-
 struct MeshFixConfig
 {
     bool keep_largest_connected_component = false;
@@ -34,6 +31,7 @@ struct MeshFixConfig
     float degenerate_needle_threshold = 20.f;
     float degenerate_len_threshold = 10.f;
     bool fair = false;
+    int verbosity = 1;
 };
 
 namespace internal
@@ -49,7 +47,7 @@ struct EmptyMap  // Doesn't do anything, just need it to satisfy function interf
 };
 
 template <typename Kernel, typename SizeType>
-std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face)
+std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face, int verbosity = 1)
     {
         using size_type = SizeType;
         std::vector<std::pair<TTriangle<SizeType>, bool>> faceflags;
@@ -198,7 +196,7 @@ std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Ke
             }
         }
 
-        if(gVerbose)
+        if(verbosity > 1)
         {
             std::cout << "Find " << nb_nm_edges << " non-manifold edges and " << nb_nm_vertices << " non-manifold vertices." << std::endl;
             std::cout << "After remove non-manifold: " << result_faces.size() << " faces." << std::endl;
@@ -252,7 +250,7 @@ template <typename Poly>
 #if BOOST_CXX_VERSION >= 202002L
     requires std::derived_from<typename Poly::Items, ItemsWithLabelFlag>
 #endif
-void FixSelfIntersection( Poly& m, int max_retry )
+void FixSelfIntersection( Poly& m, int max_retry, int verbosity )
 {
     static_assert(std::is_base_of_v<ItemsWithLabelFlag, typename Poly::Items>);
     std::vector<std::pair<typename Poly::Facet_handle, typename Poly::Facet_handle>> intersect_faces;
@@ -278,7 +276,7 @@ void FixSelfIntersection( Poly& m, int max_retry )
     int cnt = 0;
     do
     {
-        triangles = RemoveNonManifold<typename Poly::Vertex::Point_3::R, typename Poly::Face::size_type>(vertices, triangles, &nb_removed_faces);
+        triangles = RemoveNonManifold<typename Poly::Vertex::Point_3::R, typename Poly::Face::size_type>(vertices, triangles, &nb_removed_faces, verbosity);
         if(cnt++ > max_retry)
             break;
     } while(nb_removed_faces != 0);
@@ -330,7 +328,7 @@ void FixMesh(
     using Kernel = typename Polyhedron::Traits;
     using Triangle = TTriangle<typename Polyhedron::Vertex::size_type>;
     auto faces = internal::FixRoundingOrder<Kernel, typename Triangle::size_type>(input_vertices, input_faces);
-    if(gVerbose)
+    if(cfg.verbosity > 1)
     {
         std::cout << "After fix rounding F = " << faces.size() << std::endl;
     }
@@ -339,7 +337,7 @@ void FixMesh(
     int cnt = 0;
     do
     {
-        faces = internal::RemoveNonManifold<Kernel, typename Triangle::size_type>(input_vertices, faces, &nb_removed_faces);
+        faces = internal::RemoveNonManifold<Kernel, typename Triangle::size_type>(input_vertices, faces, &nb_removed_faces, cfg.verbosity);
         if(cnt++ >= cfg.max_retry)
             break;
     } while (nb_removed_faces != 0);
@@ -356,7 +354,7 @@ void FixMesh(
 
     if(cfg.fix_self_intersection)
     {
-        internal::FixSelfIntersection(m, cfg.max_retry);
+        internal::FixSelfIntersection(m, cfg.max_retry, cfg.verbosity);
     }
 
     if(cfg.keep_largest_connected_component)
@@ -366,7 +364,7 @@ void FixMesh(
         size_t num_to_remove = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, cfg.large_cc_threshold, CGAL::parameters::dry_run(true));
         num_to_remove = std::min(total_num - 1, num_to_remove);
         CGAL::Polygon_mesh_processing::keep_largest_connected_components(m, total_num - num_to_remove);
-        if(gVerbose)
+        if(cfg.verbosity > 1)
         {
             std::cout << "Remove " << num_to_remove << " small connected components." << std::endl;
         }
@@ -462,7 +460,7 @@ void FixMeshWithLabel(
     using Kernel = typename Polyhedron::Traits;
     using Triangle = TTriangle<typename Polyhedron::Vertex::size_type>;
     auto faces = internal::FixRoundingOrder<Kernel, typename Triangle::size_type>(input_vertices, input_faces);
-    if(gVerbose)
+    if(cfg.verbosity > 1)
     {
         std::cout << "After fix rounding F=" << faces.size() << std::endl;
     }
@@ -470,7 +468,7 @@ void FixMeshWithLabel(
     int cnt = 0;
     do
     {
-        faces = internal::RemoveNonManifold<Kernel, typename Triangle::size_type>(input_vertices, faces, &nb_removed_faces);
+        faces = internal::RemoveNonManifold<Kernel, typename Triangle::size_type>(input_vertices, faces, &nb_removed_faces, cfg.verbosity);
         if (cnt++ >= cfg.max_retry)
             break;
     } while (nb_removed_faces != 0);
@@ -488,7 +486,7 @@ void FixMeshWithLabel(
 
     if (cfg.fix_self_intersection)
     {
-        internal::FixSelfIntersection(m, cfg.max_retry);
+        internal::FixSelfIntersection(m, cfg.max_retry, cfg.verbosity);
     }
 
     if(cfg.keep_largest_connected_component)
@@ -498,7 +496,7 @@ void FixMeshWithLabel(
         size_t num_to_remove = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, cfg.large_cc_threshold, CGAL::parameters::dry_run(true));
         num_to_remove = std::min(total_num - 1, num_to_remove);
         CGAL::Polygon_mesh_processing::keep_largest_connected_components(m, total_num - num_to_remove);
-        if(gVerbose)
+        if(cfg.verbosity > 1)
         {
             std::cout << "Remove " << num_to_remove << " small connected components." << std::endl;
         }
