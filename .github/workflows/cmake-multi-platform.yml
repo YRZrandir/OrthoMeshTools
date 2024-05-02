@@ -47,7 +47,7 @@ jobs:
     steps:
     - name: Install third-party libs
       run: |
-        sudo apt-get install libcgal-dev libeigen3-dev libassimp-dev nlohmann-json3-dev libceres-dev
+        sudo apt install libcgal-dev libeigen3-dev libassimp-dev nlohmann-json3-dev libceres-dev
     
     - uses: actions/checkout@v4
 
