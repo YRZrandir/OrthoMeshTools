@@ -39,7 +39,11 @@ bool FixMeshFile(
     int max_hole_edges,
     float max_hole_diam,
     bool refine,
-    int max_retry)
+    int max_retry,
+    bool remove_degenerate_faces,
+    float degenerate_cap_threshold,
+    float degenerate_needle_threshold,
+    float degenerate_len_threshold)
 {
     try
     {
@@ -53,7 +57,7 @@ bool FixMeshFile(
         Polyhedron result;
         FixMesh<Polyhedron>(vertices, faces, result, keep_largest_connected_component,
         large_cc_threshold, fix_self_intersection,
-        filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
+        filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry, remove_degenerate_faces, degenerate_cap_threshold, degenerate_needle_threshold, degenerate_len_threshold);
         result.WriteAssimp(output_mesh);
         if(gVerbose)
         {

@@ -294,7 +294,11 @@ bool FixMeshFile(
     int max_hole_edges,
     float max_hole_diam,
     bool refine,
-    int max_retry);
+    int max_retry,
+    bool remove_degenerate_faces,
+    float degenerate_cap_threshold,
+    float degenerate_needle_threshold,
+    float degenerate_len_threshold);
 
 bool FixMeshFileWithColor(
     std::string path,
@@ -335,6 +339,10 @@ void FixMesh(
     float max_hole_diam,
     bool refine,
     int max_retry,
+    bool remove_degenerate_faces,
+    float degenerate_cap_threshold,
+    float degenerate_needle_threshold,
+    float degenerate_len_threshold,
     bool fair = false,
     std::vector<std::pair<std::vector<typename Polyhedron::Vertex_handle>, std::vector<typename Polyhedron::Facet_handle>>>* patch = nullptr
 )
@@ -382,6 +390,14 @@ void FixMesh(
         {
             std::cout << "Remove " << num_to_remove << " small connected components." << std::endl;
         }
+    }
+
+    if(remove_degenerate_faces)
+    {
+        CGAL::Polygon_mesh_processing::remove_almost_degenerate_faces(m,
+         CGAL::parameters::cap_threshold(degenerate_cap_threshold).
+         needle_threshold(degenerate_needle_threshold).
+         collapse_length_threshold(degenerate_len_threshold));
     }
 
     // Close holes

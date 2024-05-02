@@ -19,6 +19,10 @@ int main(int argc, char* argv[])
     argparse.add_argument("--refine", "-r").help("refine the filled holes.").flag();
     argparse.add_argument("--max_retry", "-m").help("max retry number to fix the mesh.").scan<'i', int>().default_value(10);
     argparse.add_argument("--color", "-c").help("keep the colors").flag();
+    argparse.add_argument("--degenerate", "-d").help("remove almost degenerate faces").flag();
+    argparse.add_argument("--degenerate_cap_threshold", "-dc").help("the cosine of a minimum angle such that if a face has an angle greater than this bound, it is a cap").scan<'f', float>().nargs(1).default_value(std::cosf(170.f / 180.f * 3.14159f));
+    argparse.add_argument("--degenerate_needle_threshold", "-dt").help("a bound on the ratio of the lengths of the longest edge and the shortest edge, such that a face having a ratio larger than the threshold is a needle.").scan<'f', float>().nargs(1).default_value(20.f);
+    argparse.add_argument("--degenerate_len_threshold", "-dl").help("if different from 0, an edge collapsed will be prevented if the edge is longer than the threshold given").scan<'f', float>().nargs(1).default_value(0.f);
     try
     {
         argparse.parse_args(argc, argv);
@@ -43,6 +47,11 @@ int main(int argc, char* argv[])
         bool refine = argparse.get<bool>("--refine");
         int max_retry = argparse.get<int>("--max_retry");
         bool color = argparse.get<bool>("--color");
+        bool remove_degenerate = argparse.get<bool>("-d");
+        float degenerate_cap_threshold = argparse.get<float>("-dc");
+        float degenerate_needle_threshold = argparse.get<float>("-dt");
+        float degenerate_len_threshold = argparse.get<float>("-dl");
+
         if(!input_label.empty() && !output_label.empty())
         {
             FixMeshFileWithLabel(
@@ -87,9 +96,13 @@ int main(int argc, char* argv[])
                     fix_self_intersection, 
                     filter_small_holes, 
                     smallhole_edge_num, 
-                    smallhole_size, 
+                    smallhole_size,
                     refine,
-                    max_retry
+                    max_retry,
+                    remove_degenerate,
+                    degenerate_cap_threshold,
+                    degenerate_needle_threshold,
+                    degenerate_len_threshold
                 );
             }
         }
