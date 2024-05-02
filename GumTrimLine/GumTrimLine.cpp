@@ -467,7 +467,11 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
                 LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
             }
             std::vector<int> labels = LoadLabels(label_file);
-            FixMeshWithLabel(vertices, faces, labels, mesh, false, 0, false, false, 0, 0, false, 10);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = false;
+            cfg.filter_small_holes = false;
+            cfg.refine = false;
+            FixMeshWithLabel(vertices, faces, labels, mesh, cfg);
         }
         catch(const std::exception&)
         {
@@ -673,7 +677,13 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
         
         /* Fix non-manifold */
         auto [gum_mesh_vertices, gum_mesh_faces] = part_mesh.ToVerticesTriangles();
-        FixMeshWithLabel(gum_mesh_vertices, gum_mesh_faces, part_mesh.WriteLabels(), part_mesh, true, 0, false, true, 0, 0, false, 10);
+        MeshFixConfig cfg;
+        cfg.keep_largest_connected_component = true;
+        cfg.large_cc_threshold = 9999999;
+        cfg.filter_small_holes = true;
+        cfg.max_hole_diam = 0.f;
+        cfg.max_hole_edges = 0;
+        FixMeshWithLabel(gum_mesh_vertices, gum_mesh_faces, part_mesh.WriteLabels(), part_mesh, cfg);
         if (part_mesh.is_empty() || !part_mesh.is_valid())
         {
             throw AlgError("Cannot find trim line");

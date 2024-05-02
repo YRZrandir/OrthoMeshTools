@@ -600,7 +600,16 @@ void GenerateBase2(Polyhedron &mesh)
     mesh.WriteOBJ("cleaned.obj");
 #endif
     auto [vertices, faces] = mesh.ToVerticesTriangles();
-    FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, false, true, 0, 0, false, 10);
+    MeshFixConfig cfg;
+    cfg.keep_largest_connected_component = true;
+    cfg.large_cc_threshold = 999999;
+    cfg.fix_self_intersection = false;
+    cfg.filter_small_holes = true;
+    cfg.max_hole_diam = 0.0;
+    cfg.max_hole_edges = 0;
+    cfg.refine = false;
+    cfg.fair = false;
+    FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, cfg);
 
     // Add base mesh
     std::cout << "Building mesh...";
@@ -1010,7 +1019,12 @@ void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Po
 
         auto [V, F] = mesh.ToVerticesTriangles();
         std::vector<std::pair<std::vector<Polyhedron::Vertex_handle>, std::vector<Polyhedron::Facet_handle>>> patches;
-        FixMeshWithLabel(V, F, mesh.WriteLabels(), mesh, true, 999, false, false, 99999999, 99999999.0f, true, 10, &patches);
+        MeshFixConfig cfg;
+        cfg.keep_largest_connected_component = true;
+        cfg.large_cc_threshold = 1000;
+        cfg.refine = true;
+        cfg.fair = true;
+        FixMeshWithLabel(V, F, mesh.WriteLabels(), mesh, cfg, &patches);
         for(auto& [patch_vertices, patch_faces] : patches)
         {
             for(auto hf : patch_faces)
@@ -1174,7 +1188,14 @@ int main(int argc, char *argv[])
                 LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
             }
             std::vector<int> labels = LoadLabels(label_file);
-            FixMeshWithLabel(vertices, faces, labels, mesh, true, 9999, false, false, 0, 0, false, 10);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = true;
+            cfg.large_cc_threshold = 9999;
+            cfg.fix_self_intersection = false;
+            cfg.filter_small_holes = false;
+            cfg.max_hole_diam = 0.f;
+            cfg.max_hole_edges = 0;
+            FixMeshWithLabel(vertices, faces, labels, mesh, cfg);
         }
         catch(const std::exception&)
         {
@@ -1185,7 +1206,14 @@ int main(int argc, char *argv[])
     {
         mesh.LoadLabels(label_file);
         auto [v, f] = mesh.ToVerticesTriangles();
-        FixMeshWithLabel(v, f, mesh.WriteLabels(), mesh, true, 1000, false, false, 0, 0, false, 10);
+        MeshFixConfig cfg;
+        cfg.keep_largest_connected_component = true;
+        cfg.large_cc_threshold = 9999;
+        cfg.fix_self_intersection = false;
+        cfg.filter_small_holes = false;
+        cfg.max_hole_diam = 0.f;
+        cfg.max_hole_edges = 0;
+        FixMeshWithLabel(v, f, mesh.WriteLabels(), mesh, cfg);
         //mesh.UpdateFaceLabels2();
     }
     LabelProcessing(mesh);
@@ -1207,7 +1235,14 @@ int main(int argc, char *argv[])
         std::cout << "Optimizing...";
         Optimize(mesh);
         auto [v, f] = mesh.ToVerticesTriangles();
-        FixMeshWithLabel(v, f, mesh.WriteLabels(), mesh, true, 1000, false, false, 0, 0, false, 10);
+        MeshFixConfig cfg;
+        cfg.keep_largest_connected_component = true;
+        cfg.large_cc_threshold = 9999;
+        cfg.fix_self_intersection = false;
+        cfg.filter_small_holes = false;
+        cfg.max_hole_diam = 0.f;
+        cfg.max_hole_edges = 0;
+        FixMeshWithLabel(v, f, mesh.WriteLabels(), mesh, cfg);
         std::cout << "Done." << std::endl;
 #ifdef DEBUG_ORTHOSCANBASE
         mesh.WriteOBJ("optimized.obj");
@@ -1256,7 +1291,14 @@ int GenerateGumApi(std::string input_file, std::string input_label, std::string 
                 LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
             }
             std::vector<int> labels = LoadLabels(input_label);
-            FixMeshWithLabel(vertices, faces, labels, mesh, true, 9999, false, false, 0, 0, false, 10);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = true;
+            cfg.large_cc_threshold = 9999;
+            cfg.fix_self_intersection = false;
+            cfg.filter_small_holes = false;
+            cfg.max_hole_diam = 0.f;
+            cfg.max_hole_edges = 0;
+            FixMeshWithLabel(vertices, faces, labels, mesh, cfg);
         }
         catch(const std::exception&)
         {

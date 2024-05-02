@@ -133,7 +133,6 @@ std::unordered_map<int, ToothFrame> LoadToothFrames( const std::string& path )
 
     std::ifstream ifs(path);
     json data = json::parse(ifs);
-
     
     for(int i = 11; i < 49; i++)
     {
@@ -217,7 +216,13 @@ std::vector<Polyhedron> SplitByLabel(Polyhedron& mesh)
             Polyhedron mesh_label;
             CGAL::copy_face_graph(filtered_mesh, mesh_label);
             auto [v, f] = mesh_label.ToVerticesTriangles();
-            FixMesh(v, f, mesh_label, true, 10, false, true, 0, 0, false, 10);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = true;
+            cfg.large_cc_threshold = 1000;
+            cfg.filter_small_holes = true;
+            cfg.max_hole_diam = 0.f;
+            cfg.max_hole_edges = 0;
+            FixMesh(v, f, mesh_label, cfg);
             for(auto hf : CGAL::faces(mesh_label))
                 hf->_label = i;
             for(auto hv : CGAL::vertices(mesh_label))
