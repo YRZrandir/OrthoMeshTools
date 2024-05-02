@@ -32,18 +32,7 @@ using Triangle = Polyhedron::Triangle;
 bool FixMeshFile(
     std::string input_mesh,
     std::string output_mesh, 
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry,
-    bool remove_degenerate_faces,
-    float degenerate_cap_threshold,
-    float degenerate_needle_threshold,
-    float degenerate_len_threshold)
+    const MeshFixConfig& cfg)
 {
     try
     {
@@ -55,9 +44,7 @@ bool FixMeshFile(
             printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
         }
         Polyhedron result;
-        FixMesh<Polyhedron>(vertices, faces, result, keep_largest_connected_component,
-        large_cc_threshold, fix_self_intersection,
-        filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry, remove_degenerate_faces, degenerate_cap_threshold, degenerate_needle_threshold, degenerate_len_threshold);
+        FixMesh<Polyhedron>(vertices, faces, result, cfg);
         result.WriteAssimp(output_mesh);
         if(gVerbose)
         {
@@ -76,15 +63,7 @@ bool FixMeshFileWithLabel(
     std::string output_mesh,
     std::string input_label,
     std::string output_label,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry
-)
+    const MeshFixConfig& cfg)
 {
     std::vector<KernelEpick::Point_3> vertices;
     std::vector<Triangle> faces;
@@ -95,8 +74,7 @@ bool FixMeshFileWithLabel(
         printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
     }
     Polyhedron m;
-    FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, keep_largest_connected_component, large_cc_threshold,
-     fix_self_intersection, filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
+    FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, cfg);
     
     m.WriteAssimp(output_mesh);
     if(gVerbose)
@@ -110,14 +88,7 @@ bool FixMeshFileWithLabel(
 bool FixMeshFileWithColor(
     std::string input_mesh,
     std::string output_mesh,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry
+    const MeshFixConfig& cfg
 )
 {
     std::vector<KernelEpick::Point_3> vertices;
@@ -159,8 +130,7 @@ bool FixMeshFileWithColor(
         printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
     }
     Polyhedron m;
-    FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, keep_largest_connected_component, large_cc_threshold,
-     fix_self_intersection, filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
+    FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, cfg);
     
     auto [out_v, out_f] = m.ToVerticesTriangles();
     std::vector<Eigen::Vector3f> out_c;

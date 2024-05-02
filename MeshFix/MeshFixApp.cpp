@@ -38,72 +38,34 @@ int main(int argc, char* argv[])
         std::string output_path = argparse.get("-o");
         std::string input_label = argparse.present("-li").value_or("");
         std::string output_label = argparse.present("-lo").value_or("");
-        int large_cc_threshold = argparse.get<int>("--small_component_threshold");
-        bool keep_largest_connected_component = (large_cc_threshold != 0);
-        bool fix_self_intersection = argparse.get<bool>("--fix_self_intersection");
-        int smallhole_edge_num = argparse.get<int>("--smallhole_edge_num");
-        float smallhole_size = argparse.get<float>("--smallhole_size");
-        bool filter_small_holes = smallhole_edge_num <= 2 && smallhole_size <= 0.0;
-        bool refine = argparse.get<bool>("--refine");
-        int max_retry = argparse.get<int>("--max_retry");
         bool color = argparse.get<bool>("--color");
-        bool remove_degenerate = argparse.get<bool>("-d");
-        float degenerate_cap_threshold = argparse.get<float>("-dc");
-        float degenerate_needle_threshold = argparse.get<float>("-dt");
-        float degenerate_len_threshold = argparse.get<float>("-dl");
+        MeshFixConfig cfg;
+        cfg.large_cc_threshold = argparse.get<int>("--small_component_threshold");
+        cfg.keep_largest_connected_component = (cfg.large_cc_threshold != 0);
+        cfg.fix_self_intersection = argparse.get<bool>("--fix_self_intersection");
+        cfg.max_hole_edges = argparse.get<int>("--smallhole_edge_num");
+        cfg.max_hole_diam = argparse.get<float>("--smallhole_size");
+        cfg.filter_small_holes = cfg.max_hole_edges <= 2 && cfg.max_hole_diam <= 0.0;
+        cfg.refine = argparse.get<bool>("--refine");
+        cfg.max_retry = argparse.get<int>("--max_retry");
+        cfg.remove_degenerate_faces = argparse.get<bool>("-d");
+        cfg.degenerate_cap_threshold = argparse.get<float>("-dc");
+        cfg.degenerate_needle_threshold = argparse.get<float>("-dt");
+        cfg.degenerate_len_threshold = argparse.get<float>("-dl");
 
         if(!input_label.empty() && !output_label.empty())
         {
-            FixMeshFileWithLabel(
-                path,
-                output_path,
-                input_label,
-                output_label,
-                keep_largest_connected_component,
-                large_cc_threshold,
-                fix_self_intersection, 
-                filter_small_holes, 
-                smallhole_edge_num, 
-                smallhole_size, 
-                refine,
-                max_retry
-            );
+            FixMeshFileWithLabel( path, output_path, input_label, output_label, cfg );
         }
         else
         {
             if(color)
             {
-                FixMeshFileWithColor( 
-                    path,
-                    output_path,
-                    keep_largest_connected_component,
-                    large_cc_threshold,
-                    fix_self_intersection, 
-                    filter_small_holes, 
-                    smallhole_edge_num, 
-                    smallhole_size, 
-                    refine,
-                    max_retry
-                );
+                FixMeshFileWithColor( path, output_path, cfg );
             }
             else
             {
-                FixMeshFile( 
-                    path,
-                    output_path,
-                    keep_largest_connected_component,
-                    large_cc_threshold,
-                    fix_self_intersection, 
-                    filter_small_holes, 
-                    smallhole_edge_num, 
-                    smallhole_size,
-                    refine,
-                    max_retry,
-                    remove_degenerate,
-                    degenerate_cap_threshold,
-                    degenerate_needle_threshold,
-                    degenerate_len_threshold
-                );
+                FixMeshFile( path, output_path, cfg );
             }
         }
     }
