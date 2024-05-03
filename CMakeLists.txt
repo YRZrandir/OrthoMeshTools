@@ -1,26 +1,41 @@
-﻿cmake_minimum_required(VERSION 3.8)
+﻿cmake_minimum_required(VERSION 3.24)
 set(CMAKE_CXX_STANDARD 20)
 project("OrthoMeshTools" C CXX)
 
+include(FetchContent)
+set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE ALWAYS)
+set(FETCHCONTENT_QUIET OFF)
+set(CMAKE_BUILD_TYPE Release)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS "-fpermissive -fPIC -fopenmp")
 option(BUILD_EXECUTABLES "" ON)
 option(BUILD_PYTHON_LIB "" OFF)
-
 add_compile_definitions(NOMINMAX)
 add_compile_options("/EHsc")
-find_package(Eigen3 REQUIRED)
+
+FetchContent_Declare(Eigen3 URL https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.zip
+ CMAKE_ARGS -DBUILD_TESTING=OFF -DEIGEN_BUILD_DOC=OFF -DEIGEN_TEST_NOQT=ON
+)
+FetchContent_MakeAvailable(Eigen3)
+
+FetchContent_Declare(assimp URL https://github.com/assimp/assimp/archive/refs/tags/v5.4.0.tar.gz
+ CMAKE_ARGS -DASSIMP_BUILD_TESTS=OFF -DASSIMP_INSTALL=OFF)
+FetchContent_MakeAvailable(assimp)
+
+FetchContent_Declare(nlohmann_json URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz)
+FetchContent_MakeAvailable(nlohmann_json)
+
+# find_package(Eigen3 REQUIRED)
+# ind_package(assimp REQUIRED)
+# find_package(nlohmann_json REQUIRED)
 find_package(CGAL REQUIRED)
 find_package(OpenMP REQUIRED)
-find_package(assimp REQUIRED)
-find_package(nlohmann_json REQUIRED)
 find_package(Ceres)
 include(CGAL_Eigen3_support)
 include(CGAL_Ceres_support)
 
 include_directories("./")
-
 add_library(Ortho "Polyhedron.cpp" "Ortho.cpp" "Polyhedron.h" "Ortho.h")
 target_link_libraries(Ortho PUBLIC CGAL::CGAL CGAL::Eigen3_support nlohmann_json::nlohmann_json OpenMP::OpenMP_CXX assimp::assimp)
 
