@@ -2,10 +2,7 @@
 #include <vector>
 #include <unordered_map>
 #include <CGAL/boost/graph/io.h>
-
-#ifndef FOUND_PYBIND11
 #include <argparse/argparse.hpp>
-#endif
 
 template <class Refs, typename Tag, typename Point>
 class VertexDeform : public VertexWithLabelFlag<Refs, Tag, Point>
@@ -29,7 +26,6 @@ public:
     };
 };
 
-#ifndef FOUND_PYBIND11
 int main(int argc, char* argv[])
 {
     Eigen::Matrix3f m0;
@@ -197,4 +193,3 @@ int main(int argc, char* argv[])
     }
     return 0;
 }
-#endif

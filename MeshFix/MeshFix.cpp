@@ -17,9 +17,6 @@
 #include <omp.h>
 #include "../Polyhedron.h"
 #include "MeshFix.h"
-#ifdef FOUND_PYBIND11
-#include <pybind11/pybind11.h>
-#endif
 namespace 
 {
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;

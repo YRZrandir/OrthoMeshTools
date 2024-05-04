@@ -32,28 +32,14 @@ PYBIND11_MODULE(OrthoMeshTools, m)
     m.def("FixMesh", &FixMeshFile, "Fix non-manifold vertices & edges",
         py::arg("path"),
         py::arg("output_path"),
-        py::arg("keep_largest_connected_component"),
-        py::arg("large_cc_threshold"),
-        py::arg("fix_self_intersection"),
-        py::arg("filter_small_holes"),
-        py::arg("max_hole_edges"),
-        py::arg("max_hole_diam"),
-        py::arg("refine"),
-        py::arg("max_retry"));
+        py::arg("cfg"));
 
     m.def("FixMeshWithLabel", &FixMeshFileWithLabel, "Fix non-manifold vertices & edges and output manipulated vertex label file.",
         py::arg("path"),
         py::arg("output_path"),
         py::arg("input_label"),
         py::arg("output_label"),
-        py::arg("keep_largest_connected_component"),
-        py::arg("large_cc_threshold"),
-        py::arg("fix_self_intersection"),
-        py::arg("filter_small_holes"),
-        py::arg("max_hole_edges"),
-        py::arg("max_hole_diam"),
-        py::arg("refine"),
-        py::arg("max_retry"));
+        py::arg("cfg"));
 
     m.def("ReSegment", &ReSegmentLabels, "ReSegment the mesh using the provided splitlines.",
         py::arg("input_mesh"),
@@ -75,7 +61,8 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("frame_file"),
         py::arg("output_file"),
         py::arg("smooth"),
-        py::arg("fix_factor"));
+        py::arg("fix"),
+        py::arg("debug_output"));
 
     m.def("FakeToothRoot", &FakeToothRoot, "Generate fake tooth root for tooth crowns",
         py::arg("input_mesh"),
@@ -83,7 +70,7 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("frame_path"),
         py::arg("label_path"));
 
-    m.def("GenerateGum", &GenerateGumApi, "Generate fake gum",
+    m.def("GenerateGum", &GenerateGum, "Generate fake gum",
         py::arg("input_file"),
         py::arg("input_label"),
         py::arg("crown_frame"),
