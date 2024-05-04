@@ -3,13 +3,13 @@ set(CMAKE_CXX_STANDARD 20)
 project("OrthoMeshTools" C CXX)
 
 include(FetchContent)
-set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE NEVER)
+set(FETCHCONTENT_TRY_FIND_PACKAGE_MODE ALWAYS)
 set(FETCHCONTENT_QUIET OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_CXX_FLAGS "-fpermissive -fPIC -fopenmp")
 option(BUILD_EXECUTABLES "" ON)
-option(BUILD_PYTHON_LIB "" ON)
+option(BUILD_PYTHON_LIB "" OFF)
 add_compile_definitions(NOMINMAX)
 add_compile_options("/EHsc")
 
@@ -42,17 +42,13 @@ if (BUILD_PYTHON_LIB)
     FetchContent_Declare(pybind11 URL https://github.com/pybind/pybind11/archive/refs/tags/v2.12.0.tar.gz)
     FetchContent_MakeAvailable(pybind11)
     # find_package(pybind11 CONFIG)
-    if (pybind11_FOUND)
-        add_compile_definitions(FOUND_PYBIND11)
-        pybind11_add_module(OrthoMeshTools SHARED "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
-                "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp"
-                "FakeToothRoot/FakeToothRoot.cpp" "OrthoScanBase/OrthoScanBase.cpp"
-        )
-        target_link_libraries(OrthoMeshTools PUBLIC Ortho pybind11::module)
-        target_compile_definitions(OrthoMeshTools PUBLIC FOUND_PYBIND11)
-    else ()
-        message(WARNING "Failed to find pybind11.")
-    endif ()
+    add_compile_definitions(FOUND_PYBIND11)
+    pybind11_add_module(OrthoMeshTools SHARED "PyBind.cpp" "MeshFix/MeshFix.cpp" "SegClean/SegClean.cpp"
+            "ReSegment/ReSegment.cpp" "HoleMerge/HoleMerge.cpp" "GumTrimLine/GumTrimLine.cpp" "ColorMeshByLabel/ColorMeshByLabel.cpp"
+            "FakeToothRoot/FakeToothRoot.cpp" "OrthoScanBase/OrthoScanBase.cpp"
+    )
+    target_link_libraries(OrthoMeshTools PUBLIC Ortho pybind11::module)
+    target_compile_definitions(OrthoMeshTools PUBLIC FOUND_PYBIND11)
 endif ()
 
 if (BUILD_EXECUTABLES)
