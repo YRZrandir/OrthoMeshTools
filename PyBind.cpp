@@ -68,7 +68,8 @@ PYBIND11_MODULE(OrthoMeshTools, m)
         py::arg("input_mesh"),
         py::arg("output_path"),
         py::arg("frame_path"),
-        py::arg("label_path"));
+        py::arg("label_path"),
+        py::arg("fair"));
 
     m.def("GenerateGum", &GenerateGum, "Generate fake gum",
         py::arg("input_file"),
