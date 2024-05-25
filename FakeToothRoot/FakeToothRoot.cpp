@@ -366,7 +366,7 @@ void ProcessOneTooth( Polyhedron& m, Point_3 centroid, Vector_3 up, int label )
     }
 }
 
-void ProcessOneToothLaplacian( Polyhedron& m, Point_3 centroid, Vector_3 up, int label)
+void ProcessOneToothLaplacian( Polyhedron& m, Point_3 centroid, Vector_3 up, int label, int fair)
 {
     up = -up;
     CGAL::Polygon_mesh_processing::keep_largest_connected_components(m, 1);
@@ -390,7 +390,7 @@ void ProcessOneToothLaplacian( Polyhedron& m, Point_3 centroid, Vector_3 up, int
     CGAL::Polygon_mesh_processing::triangulate_and_refine_hole(m, max_hole_edge, std::back_inserter(patch_facets), std::back_inserter(patch_vertices));
 
     std::unordered_set<hVertex> vertices_to_fair(patch_vertices.begin(), patch_vertices.end());
-    for(int i = 0; i < 4; i++)  //k-rings
+    for(int i = 0; i < fair; i++)  //k-rings
     {
         std::unordered_set<hVertex> temp = vertices_to_fair;
         for(auto hv : vertices_to_fair)
@@ -557,7 +557,7 @@ void ExportToothGroup(const std::vector<Polyhedron>& meshes, const std::vector<i
 
 void GenFakeToothRoot(const float* vertices, const unsigned nb_vertices, const unsigned* indices, unsigned nb_faces, const unsigned* labels, const char* frame_json,
  const char* output_folder,
- float** out_vertices, unsigned** out_indices, unsigned** out_labels, unsigned* nb_out_vertices, unsigned* nb_out_faces)
+ float** out_vertices, unsigned** out_indices, unsigned** out_labels, unsigned* nb_out_vertices, unsigned* nb_out_faces, int fair)
 {
     std::vector<Point_3> points;
     std::vector<typename Polyhedron::Vertex::size_type> faces;
@@ -589,7 +589,7 @@ void GenFakeToothRoot(const float* vertices, const unsigned nb_vertices, const u
         auto& m = meshes[i];
         int label = m.vertices_begin()->_label;
         labellist[i] = label;
-        ProcessOneToothLaplacian(m, frames[label].centroid, frames[label].up, label);
+        ProcessOneToothLaplacian(m, frames[label].centroid, frames[label].up, label, fair);
         m.WriteOBJ(std::string(output_folder) + std::to_string(label) + std::string(".obj"));
     }
 
@@ -637,7 +637,7 @@ void GenFakeToothRoot(const float* vertices, const unsigned nb_vertices, const u
 //    }
 }
 
-void FakeToothRoot(std::string input_path, std::string output_path, std::string frame_path, std::string label_path)
+void FakeToothRoot(std::string input_path, std::string output_path, std::string frame_path, std::string label_path, int fair)
 {
     Polyhedron scanmesh;
     CGAL::IO::read_polygon_mesh(input_path, scanmesh);
@@ -671,7 +671,8 @@ void FakeToothRoot(std::string input_path, std::string output_path, std::string 
     if (!output_path.ends_with('/')) {
         output_path = output_path + '/';
     }
-    GenFakeToothRoot(vertices.data(), scanmesh.size_of_vertices(), indices.data(), scanmesh.size_of_facets(), labels.data(), frame_json.c_str(), output_path.c_str(), &out_vertices, &out_indices, &out_labels, &nb_out_vertices, &nb_out_faces);
+    GenFakeToothRoot(vertices.data(), scanmesh.size_of_vertices(), indices.data(), scanmesh.size_of_facets(),
+     labels.data(), frame_json.c_str(), output_path.c_str(), &out_vertices, &out_indices, &out_labels, &nb_out_vertices, &nb_out_faces, fair);
 
 //    std::vector<Point_3> out_points;
 //    std::vector<size_t> out_faces;
@@ -703,6 +704,7 @@ int main(int argc, char* argv[])
     std::string output_path;
     std::string frame_path;
     std::string label_path;
+    int fair = 1;
     for(int i = 1; i < argc; i++)
     {
         if(std::strcmp(argv[i], "-i") == 0)
@@ -721,8 +723,12 @@ int main(int argc, char* argv[])
         {
             label_path = std::string(argv[i+1]);
         }
+        if(std::strcmp(argv[i], "-s") == 0)
+        {
+            fair = std::atoi(argv[i + 1]);
+        }
     }
-    FakeToothRoot(input_path, output_path, frame_path, label_path);
+    FakeToothRoot(input_path, output_path, frame_path, label_path, fair);
     return 0;
 }
 #endif

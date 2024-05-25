@@ -7,6 +7,6 @@
 
 #include <string>
 
-void FakeToothRoot(std::string input_path, std::string output_path, std::string frame_path, std::string label_path);
+void FakeToothRoot(std::string input_path, std::string output_path, std::string frame_path, std::string label_path, int fair);
 
 #endif //ORTHOMESHTOOLS_FAKETOOTHROOT_H
