@@ -133,7 +133,6 @@ std::unordered_map<int, ToothFrame> LoadToothFrames( const std::string& path )
 
     std::ifstream ifs(path);
     json data = json::parse(ifs);
-
     
     for(int i = 11; i < 49; i++)
     {
@@ -217,7 +216,13 @@ std::vector<Polyhedron> SplitByLabel(Polyhedron& mesh)
             Polyhedron mesh_label;
             CGAL::copy_face_graph(filtered_mesh, mesh_label);
             auto [v, f] = mesh_label.ToVerticesTriangles();
-            FixMesh(v, f, mesh_label, true, 10, false, true, 0, 0, false, 10);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = true;
+            cfg.large_cc_threshold = 1000;
+            cfg.filter_small_holes = true;
+            cfg.max_hole_diam = 0.f;
+            cfg.max_hole_edges = 0;
+            FixMesh(v, f, mesh_label, cfg);
             for(auto hf : CGAL::faces(mesh_label))
                 hf->_label = i;
             for(auto hv : CGAL::vertices(mesh_label))
@@ -696,39 +701,3 @@ void FakeToothRoot(std::string input_path, std::string output_path, std::string 
     delete[] out_indices;
     delete[] out_labels;
 }
-
-#ifndef FOUND_PYBIND11
-int main(int argc, char* argv[])
-{
-    std::string input_path;
-    std::string output_path;
-    std::string frame_path;
-    std::string label_path;
-    int fair = 1;
-    for(int i = 1; i < argc; i++)
-    {
-        if(std::strcmp(argv[i], "-i") == 0)
-        {
-            input_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-o") == 0)
-        {
-            output_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-f") == 0)
-        {
-            frame_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-l") == 0)
-        {
-            label_path = std::string(argv[i+1]);
-        }
-        if(std::strcmp(argv[i], "-s") == 0)
-        {
-            fair = std::atoi(argv[i + 1]);
-        }
-    }
-    FakeToothRoot(input_path, output_path, frame_path, label_path, fair);
-    return 0;
-}
-#endif

@@ -2,10 +2,7 @@
 #include <vector>
 #include <unordered_map>
 #include <CGAL/boost/graph/io.h>
-
-#ifndef FOUND_PYBIND11
 #include <argparse/argparse.hpp>
-#endif
 
 template <class Refs, typename Tag, typename Point>
 class VertexDeform : public VertexWithLabelFlag<Refs, Tag, Point>
@@ -29,7 +26,6 @@ public:
     };
 };
 
-#ifndef FOUND_PYBIND11
 int main(int argc, char* argv[])
 {
     Eigen::Matrix3f m0;
@@ -86,7 +82,13 @@ int main(int argc, char* argv[])
                 LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
             }
             std::vector<int> labels = LoadLabels(label_file);
-            FixMeshWithLabel(vertices, faces, labels, mesh, false, 0, false, false, 0, 0, false, 10);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = false;
+            cfg.fix_self_intersection = false;
+            cfg.filter_small_holes = false;
+            cfg.refine = false;
+            cfg.fair = false;
+            FixMeshWithLabel(vertices, faces, labels, mesh, cfg);
         }
         catch(const std::exception&)
         {
@@ -98,7 +100,14 @@ int main(int argc, char* argv[])
         mesh.LoadLabels(label_file);
     }
     auto [vertices, faces] = mesh.ToVerticesTriangles();
-    FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, true, false, 100, 100, true, 10);
+    MeshFixConfig cfg;
+    cfg.keep_largest_connected_component = true;
+    cfg.large_cc_threshold = 1000;
+    cfg.fix_self_intersection = true;
+    cfg.filter_small_holes = false;
+    cfg.refine = true;
+    cfg.fair = true;
+    FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, cfg);
 
     for(auto hv : CGAL::vertices(mesh))
     {
@@ -184,4 +193,3 @@ int main(int argc, char* argv[])
     }
     return 0;
 }
-#endif

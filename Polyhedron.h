@@ -390,7 +390,7 @@ public:
     {
         if(labels.size() != this->size_of_vertices())
         {
-            throw MeshError("Number of labels != number of vertices");
+            throw MeshError("Number of labels (" + std::to_string(labels.size()) + ") != number of vertices (" + std::to_string(this->size_of_vertices()) + ")");
         }
         
         size_t id = 0;

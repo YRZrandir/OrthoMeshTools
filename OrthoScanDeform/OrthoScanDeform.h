@@ -309,7 +309,15 @@ public:
             //mesh.WriteOBJ("mid.obj");
             auto [vertices, faces] = mesh.ToVerticesTriangles();
             std::vector<std::pair<std::vector<typename MeshType::Vertex_handle>, std::vector<typename MeshType::Facet_handle>>> patch;
-            FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, true, false, 100, 100, true, 10, &patch);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = true;
+            cfg.large_cc_threshold = 1000;
+            cfg.fix_self_intersection = true;
+            cfg.filter_small_holes = false;
+            cfg.refine = true;
+            cfg.fair = true;
+
+            FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, cfg, &patch);
             for (auto &pair : patch)
             {
                 std::unordered_set<typename MeshType::Vertex_handle> vertex_to_smooth;

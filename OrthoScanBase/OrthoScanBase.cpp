@@ -20,10 +20,6 @@
 #include "../EasyOBJ.h"
 #include "../SegClean/SegClean.h"
 
-#ifndef FOUND_PYBIND11
-#include <argparse/argparse.hpp>
-#endif
-
 //#define DEBUG_ORTHOSCANBASE
 
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
@@ -600,7 +596,16 @@ void GenerateBase2(Polyhedron &mesh)
     mesh.WriteOBJ("cleaned.obj");
 #endif
     auto [vertices, faces] = mesh.ToVerticesTriangles();
-    FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, true, 1000, false, true, 0, 0, false, 10);
+    MeshFixConfig cfg;
+    cfg.keep_largest_connected_component = true;
+    cfg.large_cc_threshold = 999999;
+    cfg.fix_self_intersection = false;
+    cfg.filter_small_holes = true;
+    cfg.max_hole_diam = 0.0;
+    cfg.max_hole_edges = 0;
+    cfg.refine = false;
+    cfg.fair = false;
+    FixMeshWithLabel(vertices, faces, mesh.WriteLabels(), mesh, cfg);
 
     // Add base mesh
     std::cout << "Building mesh...";
@@ -975,7 +980,7 @@ std::vector<std::array<std::pair<int, float>, 3>> ComputeDeformWeightsGeoDist(co
     return weights_table;
 }
 
-void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Polyhedron& mesh)
+void GenerateGumImpl(std::string output_gum, std::string crown_frame, bool upper, Polyhedron& mesh)
 {
     std::cout << "Creating gum..." << std::endl;
     // Here we remove tooth mesh one by one, in this way it creates smaller hole which are easier to close.
@@ -1010,7 +1015,12 @@ void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Po
 
         auto [V, F] = mesh.ToVerticesTriangles();
         std::vector<std::pair<std::vector<Polyhedron::Vertex_handle>, std::vector<Polyhedron::Facet_handle>>> patches;
-        FixMeshWithLabel(V, F, mesh.WriteLabels(), mesh, true, 999, false, false, 99999999, 99999999.0f, true, 10, &patches);
+        MeshFixConfig cfg;
+        cfg.keep_largest_connected_component = true;
+        cfg.large_cc_threshold = 1000;
+        cfg.refine = true;
+        cfg.fair = true;
+        FixMeshWithLabel(V, F, mesh.WriteLabels(), mesh, cfg, &patches);
         for(auto& [patch_vertices, patch_faces] : patches)
         {
             for(auto hf : patch_faces)
@@ -1134,109 +1144,7 @@ void GenerateGum(std::string output_gum, std::string crown_frame, bool upper, Po
     std::cout << "Done." << std::endl;
 }
 
-#ifndef FOUND_PYBIND11
-int main(int argc, char *argv[])
-{
-    argparse::ArgumentParser parser;
-    parser.add_argument("--input_file", "-i").required().help("specify the input mesh.");
-    parser.add_argument("--input_label", "-l").required().help("specify the input labels.");
-    parser.add_argument("--output_file", "-o").help("specify the output file.");
-    parser.add_argument("--output_label", "-ol").help("specify the output labels.");
-    parser.add_argument("--output_gum", "-g").help("specify the output gum mesh file.");
-    parser.add_argument("--crown_frame", "-c").help("specify the crown frame file.");
-    try
-    {
-        parser.parse_args(argc, argv);
-    }
-    catch(const std::exception& e)
-    {
-        std::cout << e.what() << std::endl;
-        return -1;
-    }
-
-    Polyhedron mesh;
-    std::string input_file = parser.get("-i");
-    std::string label_file = parser.get("-l");
-    if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
-    {
-        try
-        {
-            printf("possible invalid mesh, try fixing...\n");
-            std::vector<typename Polyhedron::Traits::Point_3> vertices;
-            std::vector<TTriangle<size_t>> faces;
-            if(input_file.ends_with(".obj"))
-            {
-                LoadVFObj<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
-            }
-            else
-            {
-                // TODO: add custom file loading function for more formats, since assimp cannot keep vertex order sometimes.
-                LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
-            }
-            std::vector<int> labels = LoadLabels(label_file);
-            FixMeshWithLabel(vertices, faces, labels, mesh, true, 9999, false, false, 0, 0, false, 10);
-        }
-        catch(const std::exception&)
-        {
-            throw IOError("Cannot read mesh file or mesh invalid: " + input_file);
-        }
-    }
-    else
-    {
-        mesh.LoadLabels(label_file);
-        auto [v, f] = mesh.ToVerticesTriangles();
-        FixMeshWithLabel(v, f, mesh.WriteLabels(), mesh, true, 1000, false, false, 0, 0, false, 10);
-        //mesh.UpdateFaceLabels2();
-    }
-    LabelProcessing(mesh);
-    SegClean(mesh);
-
-    bool upper = true;
-    for(auto hv : CGAL::vertices(mesh))
-    {
-        if(hv->_label >= 11 && hv->_label <= 29)
-            break;
-        else if(hv->_label >= 31 && hv->_label <= 49)
-        {
-            upper = false;
-            break;
-        }
-    }
-    try
-    {
-        std::cout << "Optimizing...";
-        Optimize(mesh);
-        auto [v, f] = mesh.ToVerticesTriangles();
-        FixMeshWithLabel(v, f, mesh.WriteLabels(), mesh, true, 1000, false, false, 0, 0, false, 10);
-        std::cout << "Done." << std::endl;
-#ifdef DEBUG_ORTHOSCANBASE
-        mesh.WriteOBJ("optimized.obj");
-#endif
-        std::cout << "Generating...";
-        GenerateBase2(mesh);
-        std::cout << "Done." << std::endl;
-        if(parser.present("-o").has_value()) {
-            mesh.WriteOBJ(parser.get("-o"));
-        }
-        if(parser.present("-ol").has_value()) {
-            mesh.WriteLabels(parser.get("-ol"));
-        }
-
-        if(parser.present("-g").has_value() && parser.present("-c").has_value())
-        {
-            GenerateGum(parser.present("-g").value(), parser.present("-c").value(), upper, mesh);
-        }
-    }
-    catch(const std::exception& e)
-    {
-        std::cout << e.what() << std::endl;
-    }
-
-    return 0;
-}
-
-#else
-int GenerateGumApi(std::string input_file, std::string input_label, std::string crown_frame, std::string output_gum)
+int GenerateGum(std::string input_file, std::string input_label, std::string crown_frame, std::string output_gum)
 {
     Polyhedron mesh;
     if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
@@ -1256,7 +1164,14 @@ int GenerateGumApi(std::string input_file, std::string input_label, std::string 
                 LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
             }
             std::vector<int> labels = LoadLabels(input_label);
-            FixMeshWithLabel(vertices, faces, labels, mesh, true, 9999, false, false, 0, 0, false, 10);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = true;
+            cfg.large_cc_threshold = 9999;
+            cfg.fix_self_intersection = false;
+            cfg.filter_small_holes = false;
+            cfg.max_hole_diam = 0.f;
+            cfg.max_hole_edges = 0;
+            FixMeshWithLabel(vertices, faces, labels, mesh, cfg);
         }
         catch(const std::exception&)
         {
@@ -1290,8 +1205,10 @@ int GenerateGumApi(std::string input_file, std::string input_label, std::string 
         std::cout << "Generating...";
         GenerateBase2(mesh);
         std::cout << "Done." << std::endl;
-
-        GenerateGum(output_gum, crown_frame, upper, mesh);
+        if(!output_gum.empty())
+        {
+            GenerateGumImpl(output_gum, crown_frame, upper, mesh);
+        }
     }
     catch(const std::exception& e)
     {
@@ -1300,5 +1217,3 @@ int GenerateGumApi(std::string input_file, std::string input_label, std::string 
 
     return 0;
 }
-
-#endif

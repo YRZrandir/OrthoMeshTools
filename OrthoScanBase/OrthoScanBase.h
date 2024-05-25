@@ -2,6 +2,6 @@
 #define ORTHO_SCAN_BASE_H
 #include <string>
 
-int GenerateGumApi(std::string input_file, std::string input_label, std::string crown_frame, std::string output_gum);
+int GenerateGum(std::string input_file, std::string input_label, std::string crown_frame, std::string output_gum);
 
 #endif

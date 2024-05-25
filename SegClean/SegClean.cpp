@@ -6,9 +6,6 @@
 #include <CGAL/version.h>
 #include <nlohmann/json.hpp>
 #include "../Polyhedron.h"
-#ifdef FOUND_PYBIND11
-#include <pybind11/pybind11.h>
-#endif
 
 namespace
 {
@@ -33,43 +30,7 @@ namespace
     using PairHash = Polyhedron::PairHash;
     using PairPred = Polyhedron::PairPred;
         
-    struct Config
-    {
-        std::string input;
-        std::string output;
-        std::string labels;
-        std::string outmesh;
-        int size_threshold;
-    };
-
-    Config LoadConfig(int argc, char *argv[])
-    {
-        Config cfg;
-        for (int i = 1; i < argc; i++)
-        {
-            if (std::strcmp(argv[i], "-i") == 0)
-            {
-                cfg.input = std::string(argv[i + 1]);
-            }
-            else if (std::strcmp(argv[i], "-o") == 0)
-            {
-                cfg.output = std::string(argv[i + 1]);
-            }
-            else if (std::strcmp(argv[i], "-l") == 0)
-            {
-                cfg.labels = std::string(argv[i + 1]);
-            }
-            else if (std::strcmp(argv[i], "-m") == 0)
-            {
-                cfg.outmesh = std::string(argv[i + 1]);
-            }
-            else if (std::strcmp(argv[i], "-t") == 0)
-            {
-                cfg.size_threshold = std::atoi(argv[i + 1]);
-            }
-        }
-        return cfg;
-    }
+    
 
     std::vector<hVertex> ConnectedComponents(hVertex hv, Polyhedron &mesh)
     {
@@ -198,12 +159,3 @@ bool SegCleanF(std::string input_mesh, std::string input_labels, std::string out
     mesh.WriteLabels(output_labels, input_labels);
     return true;
 }
-
-#ifndef FOUND_PYBIND11
-int main(int argc, char *argv[])
-{
-    Config cfg = LoadConfig(argc, argv);
-    SegCleanF(cfg.input, cfg.labels, cfg.output, cfg.size_threshold);
-    return 0;
-}
-#endif

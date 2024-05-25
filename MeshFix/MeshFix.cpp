@@ -17,11 +17,6 @@
 #include <omp.h>
 #include "../Polyhedron.h"
 #include "MeshFix.h"
-#ifdef FOUND_PYBIND11
-#include <pybind11/pybind11.h>
-#endif
-// TODO: remove this
-bool gVerbose = true;
 namespace 
 {
 using KernelEpick = CGAL::Exact_predicates_inexact_constructions_kernel;
@@ -32,30 +27,21 @@ using Triangle = Polyhedron::Triangle;
 bool FixMeshFile(
     std::string input_mesh,
     std::string output_mesh, 
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry)
+    const MeshFixConfig& cfg)
 {
     try
     {
         std::vector<KernelEpick::Point_3> vertices;
         std::vector<Triangle> faces;
         LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
-        if(gVerbose)
+        if(cfg.verbosity > 0)
         {
             printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
         }
         Polyhedron result;
-        FixMesh<Polyhedron>(vertices, faces, result, keep_largest_connected_component,
-        large_cc_threshold, fix_self_intersection,
-        filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
+        FixMesh<Polyhedron>(vertices, faces, result, cfg);
         result.WriteAssimp(output_mesh);
-        if(gVerbose)
+        if(cfg.verbosity > 0)
         {
             printf("Output V = %zd, F = %zd.\n", result.size_of_vertices(), result.size_of_facets());
         }
@@ -72,30 +58,21 @@ bool FixMeshFileWithLabel(
     std::string output_mesh,
     std::string input_label,
     std::string output_label,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry
-)
+    const MeshFixConfig& cfg)
 {
     std::vector<KernelEpick::Point_3> vertices;
     std::vector<Triangle> faces;
     LoadVFAssimp<KernelEpick, Triangle::size_type>(input_mesh, vertices, faces);
     std::vector<int> labels = LoadLabels(input_label);
-    if(gVerbose)
+    if(cfg.verbosity > 0)
     {
         printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
     }
     Polyhedron m;
-    FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, keep_largest_connected_component, large_cc_threshold,
-     fix_self_intersection, filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
+    FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, cfg);
     
     m.WriteAssimp(output_mesh);
-    if(gVerbose)
+    if(cfg.verbosity > 0)
     {
         printf("Output V = %zd, F = %zd.\n", m.size_of_vertices(), m.size_of_facets());
     }
@@ -106,14 +83,7 @@ bool FixMeshFileWithLabel(
 bool FixMeshFileWithColor(
     std::string input_mesh,
     std::string output_mesh,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry
+    const MeshFixConfig& cfg
 )
 {
     std::vector<KernelEpick::Point_3> vertices;
@@ -150,13 +120,12 @@ bool FixMeshFileWithColor(
     {
         labels.push_back(color_to_int(colors[i]));
     }
-    if(gVerbose)
+    if(cfg.verbosity > 0)
     {
         printf("Load mesh: V = %zd, F = %zd\n", vertices.size(), faces.size());
     }
     Polyhedron m;
-    FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, keep_largest_connected_component, large_cc_threshold,
-     fix_self_intersection, filter_small_holes, max_hole_edges, max_hole_diam, refine, max_retry);
+    FixMeshWithLabel<Polyhedron>(vertices, faces, labels, m, cfg);
     
     auto [out_v, out_f] = m.ToVerticesTriangles();
     std::vector<Eigen::Vector3f> out_c;
@@ -166,7 +135,7 @@ bool FixMeshFileWithColor(
     }
 
     WriteVCFAssimp<typename Polyhedron::Traits::Kernel, size_t>(output_mesh, out_v, out_c, out_f);
-    if(gVerbose)
+    if(cfg.verbosity > 0)
     {
         printf("Output V = %zd, F = %zd.\n", m.size_of_vertices(), m.size_of_facets());
     }

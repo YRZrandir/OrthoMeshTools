@@ -1,7 +1,5 @@
 #include "GumTrimLine.h"
 #include <chrono>
-
-#ifndef FOUND_PYBIND11
 #include <argparse/argparse.hpp>
                                                                                                                                                                                                                                                        
 int main(int argc, char *argv[])
@@ -13,7 +11,8 @@ int main(int argc, char *argv[])
     argparse.add_argument("--frame_file", "-fr").default_value("").help("specify the crown frame file.");
     argparse.add_argument("--output_file", "-o").required().help("specify the output file.");
     argparse.add_argument("--smooth", "-s").scan<'i', int>().default_value(10).help("a non-nagetive integer that specifies the iteration number of trim line smoothing");
-    argparse.add_argument("--fix_factor", "-f").default_value(0.0).scan<'g', double>().help("");
+    argparse.add_argument("--fix", "-f").flag().help("Turn on convexity fixing");
+    argparse.add_argument("--debug_output", "-d").flag().help("Output some middle results.");
     try
     {
         argparse.parse_args(argc, argv);
@@ -26,7 +25,7 @@ int main(int argc, char *argv[])
     try
     {
         auto start_time = std::chrono::high_resolution_clock::now();
-        GumTrimLine(argparse.get("-i"), argparse.get("-l"), "", argparse.get("-o"), argparse.get<int>("-s"), argparse.get<double>("-f"));
+        GumTrimLine(argparse.get("-i"), argparse.get("-l"), "", argparse.get("-o"), argparse.get<int>("-s"), argparse.get<bool>("-f"), argparse.get<bool>("-d"));
         std::cout << "Time = " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time) << std::endl;
         std::cout << "===============================" << std::endl;
     }
@@ -37,4 +36,3 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
-#endif

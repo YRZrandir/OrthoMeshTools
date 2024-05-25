@@ -16,13 +16,38 @@
 #include <CGAL/Polyhedron_incremental_builder_3.h>
 #include <CGAL/Polyhedron_items_with_id_3.h>
 
-// TODO: remove this
-extern bool gVerbose;
+struct MeshFixConfig
+{
+    bool keep_largest_connected_component = false;
+    int large_cc_threshold = 0;
+    bool fix_self_intersection = false;
+    bool filter_small_holes = false;
+    int max_hole_edges = std::numeric_limits<int>::max();
+    float max_hole_diam = std::numeric_limits<float>::max();
+    bool refine = false;
+    int max_retry = 10;
+    bool remove_degenerate_faces = false;
+    float degenerate_cap_threshold = std::cosf(175.f);
+    float degenerate_needle_threshold = 20.f;
+    float degenerate_len_threshold = 10.f;
+    bool fair = false;
+    int verbosity = 1;
+};
+
 namespace internal
 {
+template <typename KeyType, typename ValueType>
+struct EmptyMap  // Doesn't do anything, just need it to satisfy function interface.
+{
+    using key_type = KeyType;
+    using value_type = ValueType;
+    using category = boost::writable_property_map_tag;
+    using reference = ValueType&;
+    friend void put(EmptyMap<KeyType, ValueType>& m, const KeyType& key, const ValueType& val ) {}
+};
 
 template <typename Kernel, typename SizeType>
-std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face)
+std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Kernel::Point_3>& vertices, const std::vector<TTriangle<SizeType>>& faces, size_t* nb_removed_face, int verbosity = 1)
     {
         using size_type = SizeType;
         std::vector<std::pair<TTriangle<SizeType>, bool>> faceflags;
@@ -171,7 +196,7 @@ std::vector<TTriangle<SizeType>> RemoveNonManifold(const std::vector<typename Ke
             }
         }
 
-        if(gVerbose)
+        if(verbosity > 1)
         {
             std::cout << "Find " << nb_nm_edges << " non-manifold edges and " << nb_nm_vertices << " non-manifold vertices." << std::endl;
             std::cout << "After remove non-manifold: " << result_faces.size() << " faces." << std::endl;
@@ -225,7 +250,7 @@ template <typename Poly>
 #if BOOST_CXX_VERSION >= 202002L
     requires std::derived_from<typename Poly::Items, ItemsWithLabelFlag>
 #endif
-void FixSelfIntersection( Poly& m, int max_retry )
+void FixSelfIntersection( Poly& m, int max_retry, int verbosity )
 {
     static_assert(std::is_base_of_v<ItemsWithLabelFlag, typename Poly::Items>);
     std::vector<std::pair<typename Poly::Facet_handle, typename Poly::Facet_handle>> intersect_faces;
@@ -251,7 +276,7 @@ void FixSelfIntersection( Poly& m, int max_retry )
     int cnt = 0;
     do
     {
-        triangles = RemoveNonManifold<typename Poly::Vertex::Point_3::R, typename Poly::Face::size_type>(vertices, triangles, &nb_removed_faces);
+        triangles = RemoveNonManifold<typename Poly::Vertex::Point_3::R, typename Poly::Face::size_type>(vertices, triangles, &nb_removed_faces, verbosity);
         if(cnt++ > max_retry)
             break;
     } while(nb_removed_faces != 0);
@@ -277,72 +302,46 @@ void FixSelfIntersection( Poly& m, int max_retry )
 bool FixMeshFile(
     std::string path,
     std::string output_path,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry);
+    const MeshFixConfig& cfg);
 
 bool FixMeshFileWithColor(
     std::string path,
     std::string output_path,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry);
+    const MeshFixConfig& cfg);
 
 bool FixMeshFileWithLabel(
     std::string input_mesh,
     std::string output_mesh,
     std::string input_label,
     std::string output_label,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry);
+    const MeshFixConfig& cfg);
 
 template <typename Polyhedron>
 void FixMesh(
     const std::vector<typename Polyhedron::Traits::Point_3>& input_vertices,
     const std::vector<TTriangle<typename Polyhedron::Vertex::size_type>>& input_faces,
     Polyhedron& output_mesh,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry,
-    bool fair = false,
+    const MeshFixConfig& cfg,
     std::vector<std::pair<std::vector<typename Polyhedron::Vertex_handle>, std::vector<typename Polyhedron::Facet_handle>>>* patch = nullptr
 )
 {
     using Kernel = typename Polyhedron::Traits;
     using Triangle = TTriangle<typename Polyhedron::Vertex::size_type>;
     auto faces = internal::FixRoundingOrder<Kernel, typename Triangle::size_type>(input_vertices, input_faces);
-    std::cout << "After fix rounding F = " << faces.size() << std::endl;
+    if(cfg.verbosity > 1)
+    {
+        std::cout << "After fix rounding F = " << faces.size() << std::endl;
+    }
 
     size_t nb_removed_faces = 0;
     int cnt = 0;
     do
     {
-        faces = internal::RemoveNonManifold<Kernel, typename Triangle::size_type>(input_vertices, faces, &nb_removed_faces);
-        if(cnt++ >= max_retry)
+        faces = internal::RemoveNonManifold<Kernel, typename Triangle::size_type>(input_vertices, faces, &nb_removed_faces, cfg.verbosity);
+        if(cnt++ >= cfg.max_retry)
             break;
     } while (nb_removed_faces != 0);
-    if(cnt >= max_retry)
+    if(cnt >= cfg.max_retry)
     {
         throw AlgError("Cannot remove non-manifold parts. Try increasing retry times.");
     }
@@ -353,18 +352,30 @@ void FixMesh(
     
     CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);
 
-    if(fix_self_intersection)
+    if(cfg.fix_self_intersection)
     {
-        internal::FixSelfIntersection(m, max_retry);
+        internal::FixSelfIntersection(m, cfg.max_retry, cfg.verbosity);
     }
 
-    if(keep_largest_connected_component)
+    if(cfg.keep_largest_connected_component)
     {
-        size_t num = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, large_cc_threshold);
-        if(gVerbose)
+        using Dummy = internal::EmptyMap<typename boost::graph_traits<Polyhedron>::face_descriptor, typename boost::graph_traits<Polyhedron>::faces_size_type>;
+        size_t total_num = CGAL::Polygon_mesh_processing::connected_components(m, Dummy());
+        size_t num_to_remove = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, cfg.large_cc_threshold, CGAL::parameters::dry_run(true));
+        num_to_remove = std::min(total_num - 1, num_to_remove);
+        CGAL::Polygon_mesh_processing::keep_largest_connected_components(m, total_num - num_to_remove);
+        if(cfg.verbosity > 1)
         {
-            std::cout << "Remove " << num << " small connected components." << std::endl;
+            std::cout << "Remove " << num_to_remove << " small connected components." << std::endl;
         }
+    }
+
+    if(cfg.remove_degenerate_faces)
+    {
+        CGAL::Polygon_mesh_processing::remove_almost_degenerate_faces(m,
+         CGAL::parameters::cap_threshold(cfg.degenerate_cap_threshold).
+         needle_threshold(cfg.degenerate_needle_threshold).
+         collapse_length_threshold(cfg.degenerate_len_threshold));
     }
 
     // Close holes
@@ -380,9 +391,9 @@ void FixMesh(
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(m, std::back_inserter(border_edges));
     for(typename Polyhedron::Halfedge_handle hh : border_edges)
     {
-        if(!filter_small_holes || (filter_small_holes && m.IsSmallHole(hh, max_hole_edges, max_hole_diam)))
+        if(!cfg.filter_small_holes || (cfg.filter_small_holes && m.IsSmallHole(hh, cfg.max_hole_edges, cfg.max_hole_diam)))
         {
-            if(refine && fair)
+            if(cfg.refine && cfg.fair)
             {
                 std::vector<typename Polyhedron::Vertex_handle> patch_vertices;
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
@@ -416,7 +427,7 @@ void FixMesh(
                     patch->emplace_back(std::move(patch_vertices), std::move(patch_faces));
                 }
             }
-            else if(refine)
+            else if(cfg.refine)
             {
                 std::vector<typename Polyhedron::Vertex_handle> patch_vertices;
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
@@ -443,29 +454,25 @@ void FixMeshWithLabel(
     const std::vector<TTriangle<typename Polyhedron::Vertex::size_type>> &input_faces,
     const std::vector<int> &input_labels,
     Polyhedron &output_mesh,
-    bool keep_largest_connected_component,
-    int large_cc_threshold,
-    bool fix_self_intersection,
-    bool filter_small_holes,
-    int max_hole_edges,
-    float max_hole_diam,
-    bool refine,
-    int max_retry,
+    const MeshFixConfig& cfg,
     std::vector<std::pair<std::vector<typename Polyhedron::Vertex_handle>, std::vector<typename Polyhedron::Facet_handle>>>* patch = nullptr)
 {
     using Kernel = typename Polyhedron::Traits;
     using Triangle = TTriangle<typename Polyhedron::Vertex::size_type>;
     auto faces = internal::FixRoundingOrder<Kernel, typename Triangle::size_type>(input_vertices, input_faces);
-    std::cout << "After fix rounding F=" << faces.size() << std::endl;
+    if(cfg.verbosity > 1)
+    {
+        std::cout << "After fix rounding F=" << faces.size() << std::endl;
+    }
     size_t nb_removed_faces = 0;
     int cnt = 0;
     do
     {
-        faces = internal::RemoveNonManifold<Kernel, typename Triangle::size_type>(input_vertices, faces, &nb_removed_faces);
-        if (cnt++ >= max_retry)
+        faces = internal::RemoveNonManifold<Kernel, typename Triangle::size_type>(input_vertices, faces, &nb_removed_faces, cfg.verbosity);
+        if (cnt++ >= cfg.max_retry)
             break;
     } while (nb_removed_faces != 0);
-    if (cnt >= max_retry)
+    if (cnt >= cfg.max_retry)
     {
         throw AlgError("Cannot remove non-manifold parts. Try increasing retry times.");
     }
@@ -477,17 +484,21 @@ void FixMeshWithLabel(
 
     CGAL::Polygon_mesh_processing::remove_isolated_vertices(m);
 
-    if (fix_self_intersection)
+    if (cfg.fix_self_intersection)
     {
-        internal::FixSelfIntersection(m, max_retry);
+        internal::FixSelfIntersection(m, cfg.max_retry, cfg.verbosity);
     }
 
-    if (keep_largest_connected_component)
+    if(cfg.keep_largest_connected_component)
     {
-        size_t num = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, large_cc_threshold);
-        if (gVerbose)
+        using Dummy = internal::EmptyMap<typename boost::graph_traits<Polyhedron>::face_descriptor, typename boost::graph_traits<Polyhedron>::faces_size_type>;
+        size_t total_num = CGAL::Polygon_mesh_processing::connected_components(m, Dummy());
+        size_t num_to_remove = CGAL::Polygon_mesh_processing::keep_large_connected_components(m, cfg.large_cc_threshold, CGAL::parameters::dry_run(true));
+        num_to_remove = std::min(total_num - 1, num_to_remove);
+        CGAL::Polygon_mesh_processing::keep_largest_connected_components(m, total_num - num_to_remove);
+        if(cfg.verbosity > 1)
         {
-            std::cout << "Remove " << num << " small connected components." << std::endl;
+            std::cout << "Remove " << num_to_remove << " small connected components." << std::endl;
         }
     }
 
@@ -495,9 +506,9 @@ void FixMeshWithLabel(
     CGAL::Polygon_mesh_processing::extract_boundary_cycles(m, std::back_inserter(border_edges));
     for (typename Polyhedron::Halfedge_handle hh : border_edges)
     {
-        if (!filter_small_holes || (filter_small_holes && m.IsSmallHole(hh, max_hole_edges, max_hole_diam)))
+        if (!cfg.filter_small_holes || (cfg.filter_small_holes && m.IsSmallHole(hh, cfg.max_hole_edges, cfg.max_hole_diam)))
         {
-            if(refine)
+            if(cfg.refine)
             {
                 std::vector<typename Polyhedron::Vertex_handle> patch_vertices;
                 std::vector<typename Polyhedron::Facet_handle> patch_faces;
