@@ -876,3 +876,338 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
 
     return WritePoints(final_curve.GetPoints(), output_file);
 }
+
+bool GumTrimLine_Jiang(std::string input_file, std::string label_file, std::string frame_file, std::string output_file, bool debug_output, float h, float mu)
+{
+    Polyhedron mesh;
+    if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
+    {
+        try
+        {
+            printf("possible invalid mesh, try fixing...\n");
+            std::vector<typename Polyhedron::Traits::Point_3> vertices;
+            std::vector<TTriangle<size_t>> faces;
+            if(input_file.ends_with(".obj"))
+            {
+                LoadVFObj<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            }
+            else
+            {
+                // TODO: add custom file loading function for more formats, since assimp cannot keep vertex order sometimes.
+                LoadVFAssimp<typename Polyhedron::Traits, size_t>(input_file, vertices, faces);
+            }
+            std::vector<int> labels = LoadLabels(label_file);
+            MeshFixConfig cfg;
+            cfg.keep_largest_connected_component = false;
+            cfg.filter_small_holes = false;
+            cfg.refine = false;
+            FixMeshWithLabel(vertices, faces, labels, mesh, cfg);
+        }
+        catch(const std::exception&)
+        {
+            throw IOError("Cannot read mesh file or mesh invalid: " + input_file);
+        }
+    }
+    else
+    {
+        mesh.LoadLabels(label_file);
+        //mesh.UpdateFaceLabels2();
+    }
+    if (!mesh.is_valid(false))
+    {
+        mesh.is_valid(true);
+        throw MeshError("Input mesh not valid: " + input_file);
+    }
+    if (!mesh.is_pure_triangle())
+    {
+        throw MeshError("Input mesh has non triangle face: " + input_file);
+    }
+
+    mesh.keep_largest_connected_components(1);
+
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(hv->_label == 1)
+            hv->_label = 0;
+    }
+    std::unique_ptr<CrownFrames<typename Polyhedron::Traits>> crown_frames = nullptr;
+    if(!frame_file.empty())
+    {
+        crown_frames = std::make_unique<CrownFrames<typename Polyhedron::Traits>>(frame_file);
+    }
+    CGAL::set_halfedgeds_items_id(mesh);
+    printf("Load ortho scan mesh: V = %zd, F = %zd.\n", mesh.size_of_vertices(), mesh.size_of_facets());
+    
+    std::vector<hVertex> vhandles;
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        vhandles.push_back(hv);
+    }
+
+    std::unordered_map<hVertex, double> curv_map;
+#pragma omp parallel for
+    for(int i = 0; i < vhandles.size(); i++)
+    {
+        auto hv = vhandles[i];
+        auto xi = hv->point();
+        double A = 0.0;
+        for(auto t : CGAL::faces_around_target(hv->halfedge(), mesh))
+        {
+            auto h = t->halfedge();
+            while(h->vertex() != hv)
+            {
+                h = h->next();
+            }
+            auto q = h->vertex()->point();
+            auto r = h->next()->vertex()->point();
+            auto p = h->next()->next()->vertex()->point();
+            A += CGAL::Weights::mixed_voronoi_area(p, q, r);
+        }
+        auto normal = CGAL::Polygon_mesh_processing::compute_vertex_normal(hv, mesh);
+        double curv = 0.0;
+        for(auto nei : CGAL::halfedges_around_source(hv, mesh))
+        {
+            auto xj = nei->vertex()->point();
+            auto xb = nei->next()->vertex()->point();
+            auto xa = nei->opposite()->next()->vertex()->point();
+            auto xij = xi - xj;
+            double w = 0.5 * CGAL::Weights::cotangent_weight(xa, xj, xb, xi);
+            curv += (1.0 / 4.0 / A) * w * CGAL::scalar_product(xij, normal);
+        }
+#pragma omp critical
+{
+        curv_map[hv] = curv;
+}
+    }
+
+    double max_curv = 0.0;
+    double min_curv = std::numeric_limits<double>::max();
+    for(auto& [hv, curv] : curv_map)
+    {
+        max_curv = std::max(max_curv, curv);
+        min_curv = std::min(min_curv, curv);
+    }
+
+    for(auto& [hv, curv] : curv_map)
+    {
+        if(curv >= 0)
+        {
+            curv = curv / max_curv;
+        }
+        else
+        {
+            curv = -curv / min_curv;
+        }
+    }
+
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(curv_map[hv] >= -h)
+        {
+            curv_map[hv] = 0.0;
+        }
+    }
+
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        hv->_processed = false;
+    }
+    std::vector<std::vector<hVertex>> connected_components;
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        if(!hv->_processed && curv_map[hv] != 0.0)
+        {
+            connected_components.push_back(ConnectedComponents(hv, mesh, [&](hVertex v){ return curv_map[v] != 0.0; }));
+        }
+    }
+    for(auto& part : connected_components)
+    {
+        if(part.size() < 80)
+        {
+            for(auto hv : part)
+            {
+                curv_map[hv] = 0.0;
+            }
+        }
+    }
+
+    auto mesh_bbox = CGAL::bbox_3(mesh.points_begin(), mesh.points_end());
+    const auto C = KernelEpick::Point_3((mesh_bbox.xmax() + mesh_bbox.xmin()) * 0.5, (mesh_bbox.ymax() + mesh_bbox.ymin()) * 0.5, (mesh_bbox.zmax() + mesh_bbox.zmin()) * 0.5);
+
+    const int nb_area = 360;
+    std::vector<std::vector<hVertex>> areas(nb_area, std::vector<hVertex>());
+    double angle_step = 360.0 / nb_area;
+    const auto start_dir = KernelEpick::Vector_3(0, 1, 0); 
+    
+    std::vector<Eigen::Vector3f> colors;
+    for(auto hv : CGAL::vertices(mesh))
+    {
+        Eigen::Vector3f color(0.8f, 0.8f, 0.8f);
+        if(curv_map[hv] < -h)
+        {
+            color = Eigen::Vector3f(0.8f, 0.f, 0.f);
+            auto CP = hv->point() - C;
+            CP = KernelEpick::Vector_3(CP.x(), CP.y(), 0.0);
+            double angle = CGAL::approximate_angle(start_dir, CP);
+            if(CGAL::scalar_product(CGAL::cross_product(start_dir, CP), KernelEpick::Vector_3(0, 0, 1)) > 0)
+            {
+                angle = 360.0 - angle;
+            }
+            int area_id = angle / angle_step;
+            areas[area_id].push_back(hv);
+        }
+        colors.push_back(color);
+    }
+    if(debug_output)
+    {
+        auto [V, F] = mesh.ToVerticesTriangles();
+        WriteVCFAssimp<KernelEpick, size_t>("./color.obj", V, colors, F);
+        for(int i = 0; i < areas.size(); i++)
+        {
+            if(!areas[i].empty())
+            {
+                std::cout << "Area " << i << " has " << areas[i].size() << " vertices\n";
+            }
+        }
+    }
+
+    struct AreaData
+    {
+        double dist_max = 0.0;
+        double dist_min = 0.0;
+        hVertex hmax = nullptr;
+        hVertex hmin = nullptr;
+    };
+    KernelEpick::Plane_3 xyplane;
+    std::vector<AreaData> area_data(nb_area);
+    for(int i = 0; i < nb_area; i++)
+    {
+        const auto& points = areas[i];
+        if(points.empty())
+        {
+            continue;
+        }
+        double dist_max = 0.0;
+        double dist_min = std::numeric_limits<double>::max();
+        hVertex hmax = nullptr;
+        hVertex hmin = nullptr;
+        for(auto hv : points)
+        {
+            double dist = std::sqrt(CGAL::squared_distance(KernelEpick::Point_2(C.x(), C.y()), KernelEpick::Point_2(hv->point().x(), hv->point().y())));
+            if(dist > dist_max)
+            {
+                dist_max = dist;
+                hmax = hv;
+            }
+            if(dist < dist_min)
+            {
+                dist_min = dist;
+                hmin = hv;
+            }
+        }
+        area_data[i].dist_max = dist_max;
+        area_data[i].dist_min = dist_min;
+        area_data[i].hmax = hmax;
+        area_data[i].hmin = hmin;
+    }
+
+    std::vector<hVertex> set_outside;
+    std::vector<hVertex> set_inside;
+    double MU = mu;
+    for(int i = 0; i < nb_area; i++)
+    {
+        if(areas[i].size() <= 1)
+        {
+            continue;
+        }
+        if(set_outside.size() < 2)
+        {
+            set_outside.push_back(area_data[i].hmax);
+            set_inside.push_back(area_data[i].hmin);
+        }
+        else
+        {
+            if(CGAL::squared_distance(set_outside.back()->point(), area_data[i].hmax->point()) < MU * MU)
+            //if(true)
+            {
+                set_outside.push_back(area_data[i].hmax);
+            }
+            else
+            {
+                auto target = area_data[i].hmax;
+                auto V1 = set_outside[set_outside.size() - 1]->point();
+                auto V2 = set_outside[set_outside.size() - 2]->point();
+                double delta = 3.1415926;
+                for(auto hv : areas[i])
+                {
+                    auto VP = hv->point();
+                    auto V12 = V1 - V2;
+                    auto VP1 = VP - V1;
+                    //V12 = KernelEpick::Vector_3(V12.x(), V12.y(), 0.0);
+                    //VP1 = KernelEpick::Vector_3(VP1.x(), VP1.y(), 0.0);
+                    double theta = std::atan2(std::sqrt(CGAL::cross_product(V12, VP1).squared_length()), CGAL::scalar_product(V12, VP1));
+                    theta = std::acos(CGAL::scalar_product(V12, VP1) / std::sqrt(V12.squared_length() * VP1.squared_length()));
+                    theta = CGAL::approximate_angle(V12, VP1);
+                    theta = theta / 180.0 * 3.1415926;
+                    if(std::abs(theta) < delta && CGAL::squared_distance(set_outside.back()->point(), hv->point()) < MU * MU)
+                    //if(std::abs(theta) < delta)
+                    {
+                        delta = std::abs(theta);
+                        target = hv;
+                    }
+                }
+                set_outside.push_back(target);
+            }
+
+            if(CGAL::squared_distance(set_inside.back()->point(), area_data[i].hmin->point()) < MU * MU)
+            //if(true)
+            {
+                set_inside.push_back(area_data[i].hmin);
+            }
+            else
+            {
+                auto target = area_data[i].hmin;
+                auto V1 = set_inside[set_inside.size() - 1]->point();
+                auto V2 = set_inside[set_inside.size() - 2]->point();
+                double delta = 3.1415926;
+                for(auto hv : areas[i])
+                {
+                    auto VP = hv->point();
+                    auto V12 = V1 - V2;
+                    auto VP1 = VP - V1;
+                    //V12 = KernelEpick::Vector_3(V12.x(), V12.y(), 0.0);
+                    //VP1 = KernelEpick::Vector_3(VP1.x(), VP1.y(), 0.0);
+                    double theta = std::atan2(std::sqrt(CGAL::cross_product(V12, VP1).squared_length()), CGAL::scalar_product(V12, VP1));
+                    theta = std::acos((V12.x() * VP1.x() + V12.y() * VP1.y() + V12.z() * VP1.z()) / std::sqrt(V12.squared_length() * VP1.squared_length()));
+                    theta = CGAL::approximate_angle(V12, VP1);
+                    theta = theta / 180.0 * 3.1415926;
+                    if(std::abs(theta) < delta && CGAL::squared_distance(set_inside.back()->point(), hv->point()) < MU * MU)
+                    //if(std::abs(theta) < delta)
+                    {
+                        delta = std::abs(theta);
+                        target = hv;
+                    }
+                }
+                set_inside.push_back(target);
+            }
+        }
+    }
+    
+    EasyOBJ obj("trimline.obj");
+    for(size_t i = 0; i < set_outside.size(); i++)
+    {
+        obj.AddV(set_outside[i]->point(), 1.0, 0.0, 0.0);
+        if(i < set_outside.size() - 1)
+        {
+            obj.AddL(i + 1, i + 2);
+        }
+    }
+    for(size_t i = 0; i < set_inside.size(); i++)
+    {
+        obj.AddV(set_inside[i]->point(), 1.0, 0.0, 0.0);
+        if(i < set_inside.size() - 1)
+        {
+            obj.AddL(i + 1 + set_outside.size(), i + 2 + set_outside.size());
+        }
+    }
+}

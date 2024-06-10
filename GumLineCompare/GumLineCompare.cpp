@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <iomanip>
 #include <argparse/argparse.hpp>
 #include <CGAL/Simple_cartesian.h>
 #include <CGAL/AABB_tree.h>
@@ -41,8 +42,15 @@ std::vector<Kernel::Point_3> LoadGumLine(const std::string& path)
     return points;
 }
 
-double CalcDist(const std::vector<Kernel::Point_3>& source, const std::vector<Kernel::Point_3>& target)
+struct CalcDistResult
 {
+    double avg_dist = 0.0;
+    double max_dist = 0.0;
+};
+
+CalcDistResult CalcDist(const std::vector<Kernel::Point_3>& source, const std::vector<Kernel::Point_3>& target)
+{
+    CalcDistResult result;
     double dist = 0.0;
     std::vector<Kernel::Segment_3> target_segs;
     for(size_t i = 0; i < target.size(); i++)
@@ -70,10 +78,12 @@ double CalcDist(const std::vector<Kernel::Point_3>& source, const std::vector<Ke
         auto next = source_segs[(i + 1) % source_segs.size()];
         auto proj = aabb.closest_point(next.start());
         double d = std::sqrt(CGAL::squared_distance(proj, next.start()));
+        result.max_dist = std::max(result.max_dist, d);
         dist += 0.5 * d * (std::sqrt(curr.squared_length()) + std::sqrt(next.squared_length()));
     }
     dist /= source_total_len;
-    return dist;
+    result.avg_dist = dist;
+    return result;
 }
 
 int main(int argc, char* argv[])
@@ -87,7 +97,8 @@ int main(int argc, char* argv[])
     {
         auto src_line = LoadGumLine(parser.get("-s"));
         auto tgt_line = LoadGumLine(parser.get("-t"));
-        std::cout << "Dist = " << CalcDist(src_line, tgt_line) << std::endl;
+        auto result = CalcDist(src_line, tgt_line);
+        std::cout << std::setprecision(5) << "AvgDist= " << result.avg_dist << "\tMaxDist=" << result.max_dist << std::endl;
 
         // auto tgt_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\gt\L\gumline.obj)");
         // auto src_line = LoadGumLine(R"(D:\dev\Ortho\OrthoMeshTools\test\GumTrimLine\compare_seg2\mesh_seg_net\L\gumline.obj)");

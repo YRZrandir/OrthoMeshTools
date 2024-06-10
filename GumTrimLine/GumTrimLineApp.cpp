@@ -13,6 +13,8 @@ int main(int argc, char *argv[])
     argparse.add_argument("--smooth", "-s").scan<'i', int>().default_value(10).help("a non-nagetive integer that specifies the iteration number of trim line smoothing");
     argparse.add_argument("--fix", "-f").flag().help("Turn on convexity fixing");
     argparse.add_argument("--debug_output", "-d").flag().help("Output some middle results.");
+    argparse.add_argument("--hvalue").scan<'f', float>();
+    argparse.add_argument("--mu").scan<'f', float>();
     try
     {
         argparse.parse_args(argc, argv);
@@ -25,7 +27,7 @@ int main(int argc, char *argv[])
     try
     {
         auto start_time = std::chrono::high_resolution_clock::now();
-        GumTrimLine(argparse.get("-i"), argparse.get("-l"), "", argparse.get("-o"), argparse.get<int>("-s"), argparse.get<bool>("-f"), argparse.get<bool>("-d"));
+        GumTrimLine_Jiang(argparse.get("-i"), argparse.get("-l"), "", argparse.get("-o"), argparse.get<bool>("-d"), argparse.get<float>("--hvalue"), argparse.get<float>("--mu"));
         std::cout << "Time = " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time) << std::endl;
         std::cout << "===============================" << std::endl;
     }

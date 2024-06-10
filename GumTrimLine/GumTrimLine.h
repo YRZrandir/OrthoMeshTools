@@ -1157,5 +1157,6 @@ namespace internal
 
 
 bool GumTrimLine( std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth, bool fix, bool debug_output );
+bool GumTrimLine_Jiang( std::string input_file, std::string label_file, std::string frame_file, std::string output_file, bool debug_output, float h, float mu );
 
 #endif
