@@ -26,10 +26,8 @@ int main(int argc, char *argv[])
     
     try
     {
-        auto start_time = std::chrono::high_resolution_clock::now();
-        GumTrimLine_Jiang(argparse.get("-i"), argparse.get("-l"), "", argparse.get("-o"), argparse.get<bool>("-d"), argparse.get<float>("--hvalue"), argparse.get<float>("--mu"));
-        std::cout << "Time = " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time) << std::endl;
-        std::cout << "===============================" << std::endl;
+        GumTrimLine(argparse.get("-i"), argparse.get("-l"), "", argparse.get("-o"), argparse.get<int>("-s"), argparse.get<bool>("-f"), argparse.get<bool>("-d"));
+
     }
     catch(const std::exception& e)
     {

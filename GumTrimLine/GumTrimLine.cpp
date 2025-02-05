@@ -450,8 +450,10 @@ namespace
 bool GumTrimLine(std::string input_file, std::string label_file, std::string frame_file, std::string output_file, int smooth, bool fix, bool debug_output)
 {
     Polyhedron mesh;
+    auto start_time = std::chrono::high_resolution_clock::now();
     if (!CGAL::IO::read_polygon_mesh(input_file, mesh, CGAL::parameters::verbose(true)))
     {
+        start_time = std::chrono::high_resolution_clock::now();
         try
         {
             printf("possible invalid mesh, try fixing...\n");
@@ -480,6 +482,7 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
     }
     else
     {
+        start_time = std::chrono::high_resolution_clock::now();
         mesh.LoadLabels(label_file);
         //mesh.UpdateFaceLabels2();
     }
@@ -873,7 +876,8 @@ bool GumTrimLine(std::string input_file, std::string label_file, std::string fra
             final_curve[i] = new_points[i];
         }
     }
-
+    std::cout << "Time = " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time) << std::endl;
+    std::cout << "===============================" << std::endl;
     return WritePoints(final_curve.GetPoints(), output_file);
 }
 
