@@ -36,7 +36,7 @@ namespace
     using Triangle = Polyhedron::Triangle;
     using Edge = Polyhedron::Edge;
 
-    std::vector<hVertex> ConnectedComponentWithLegalCheck(hVertex hv, const Polyhedron &mesh, std::unordered_set<hVertex> &processed_set, std::vector<int> &output_labels)
+    std::vector<hVertex> ConnectedComponentWithLegalCheck(hVertex hv, const Polyhedron &mesh, std::unordered_set<hVertex> &processed_set, std::unordered_set<hVertex> &all_intersect_verts)
     {
         std::unordered_set<hVertex> vertices;
 
@@ -53,8 +53,8 @@ namespace
             {
                 for (auto nei : CGAL::vertices_around_target(v, mesh))
                 {
-                    // 检查是否遍历到了被标记为分割边界的点
-                    if (!is_component_legal && output_labels[nei->id()] > 0) {
+                    // 检查是否遍历到了all_intersect_faces中的点
+                    if (!is_component_legal && all_intersect_verts.contains(nei)) {
                         is_component_legal = true;
                     }
 
@@ -314,7 +314,7 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
             double depth = intersection_width;
 
             // 忽略重复的点
-            if (x_equal(p0, p1) && y_equal(p0, p1) && z_equal(p0, p1))
+            if (CGAL::x_equal(p0, p1) && CGAL::y_equal(p0, p1) && CGAL::z_equal(p0, p1))
                 continue;
 
             KernelEpick::Triangle_3 t0(p0 - n0 * depth, p1 - n1 * depth, p0 + n0 * depth);
@@ -363,6 +363,7 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
     }
 
     std::unordered_set<hVertex> processed_set;
+    std::unordered_set<hVertex> all_intersect_verts;
 #pragma omp critical
     {
         for (auto hf : all_intersect_faces)
@@ -370,6 +371,7 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
             for (auto hv : CGAL::vertices_around_face(hf->halfedge(), mesh))
             {
                 processed_set.insert(hv);
+                all_intersect_verts.insert(hv);
                 output_labels[hv->id()] = label;
             }
         }
@@ -380,7 +382,7 @@ void ReSegmentOneLabel(const Polyhedron &mesh, const AABBTree &aabb_tree, const 
     {
         if (!processed_set.contains(hv))
         {
-            connected_components.push_back(ConnectedComponentWithLegalCheck(hv, mesh, processed_set, output_labels));
+            connected_components.push_back(ConnectedComponentWithLegalCheck(hv, mesh, processed_set, all_intersect_verts));
         }
     }
 
